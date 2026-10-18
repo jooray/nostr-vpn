@@ -31,6 +31,9 @@
   let refreshing = false;
   let busyAction = '';
   let error = '';
+  let refreshError = '';
+  let stateRequest = 0;
+  let acceptedStateRequest = 0;
   let notice = '';
   let joinRequestQr = '';
   let joinerInput = '';
@@ -174,7 +177,7 @@
     shownNetworkId = preferredNetworkId(next, shownNetworkId);
     state = next;
     loading = false;
-    error = '';
+    refreshError = '';
     if (firstState || !settingsDirty) {
       syncSettings(next);
     }
@@ -266,20 +269,30 @@
     if (busyAction) {
       return;
     }
+    const request = ++stateRequest;
     refreshing = showSpinner;
     try {
-      applyState(await tick());
+      const next = await tick();
+      if (request < acceptedStateRequest) return;
+      acceptedStateRequest = request;
+      applyState(next);
     } catch (err) {
-      error = messageOf(err);
+      if (request < acceptedStateRequest) return;
+      acceptedStateRequest = request;
+      refreshError = messageOf(err);
       loading = false;
     } finally {
-      refreshing = false;
+      if (request === acceptedStateRequest) refreshing = false;
     }
   }
 
   async function runState(endpoint: string, payload?: unknown, label = 'Working'): Promise<UiState | null> {
+    // Invalidate earlier polls as soon as an action starts, including on failure.
+    acceptedStateRequest = ++stateRequest;
+    refreshing = false;
     busyAction = label;
     error = '';
+    refreshError = '';
     try {
       const next = await runAction(endpoint, payload);
       applyState(next);
@@ -993,12 +1006,12 @@
     {#if loading}
       <div class="center-state">Loading control panel</div>
     {:else if !state}
-      <div class="center-state error-state">{error || 'Control panel unavailable'}</div>
+      <div class="center-state error-state">{error || refreshError || 'Control panel unavailable'}</div>
     {:else}
-      {#if error || notice || busyAction || refreshing}
-        <div class="notice-row" class:error={Boolean(error)}>
-          {#if error}
-            {error}
+      {#if error || refreshError || notice || busyAction || refreshing}
+        <div class="notice-row" class:error={Boolean(error || refreshError)}>
+          {#if error || refreshError}
+            {error || refreshError}
           {:else if busyAction}
             {busyAction}
           {:else if notice}
