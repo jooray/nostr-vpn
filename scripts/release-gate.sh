@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verification imports must not add bytecode to the sealed source checkout.
+export PYTHONDONTWRITEBYTECODE=1
+
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MOBILE_IOS_APP_READY=0
 MOBILE_ANDROID_APP_READY=0
