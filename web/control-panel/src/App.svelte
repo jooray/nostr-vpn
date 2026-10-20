@@ -788,6 +788,7 @@
   }
 
   async function saveSettings() {
+    const submittedDraft = { ...settingsDraft };
     const listenPort = Number(settingsDraft.listenPort);
     if (!Number.isInteger(listenPort) || listenPort <= 0 || listenPort > 65535) {
       error = 'Listen port must be between 1 and 65535';
@@ -835,7 +836,9 @@
       },
       'Saving settings',
     );
-    if (ok && state) {
+    if (ok && state && Object.entries(submittedDraft).every(
+      ([key, value]) => settingsDraft[key as keyof typeof settingsDraft] === value,
+    )) {
       settingsDirty = false;
       syncSettings(state);
     }
@@ -874,12 +877,13 @@
   }
 
   async function saveWireGuardExitConfig() {
+    const submittedConfig = wireguardExitConfigDraft;
     const ok = await run(
       '/api/update_settings',
-      { wireguardExitConfig: wireguardExitConfigDraft },
+      { wireguardExitConfig: submittedConfig },
       'Saving WireGuard',
     );
-    if (ok && state) {
+    if (ok && state && wireguardExitConfigDraft === submittedConfig) {
       wireguardDirty = false;
       syncWireGuard(state);
     }
@@ -891,8 +895,12 @@
     if (!file) {
       return;
     }
+    const draftBeforeRead = wireguardExitConfigDraft;
     try {
       const config = await file.text();
+      if (wireguardExitConfigDraft !== draftBeforeRead || input.files?.[0] !== file) {
+        return;
+      }
       if (!config.trim()) {
         error = 'Selected WireGuard config is empty.';
         return;
@@ -903,7 +911,7 @@
     } catch (err) {
       error = messageOf(err);
     } finally {
-      input.value = '';
+      if (input.files?.[0] === file) input.value = '';
     }
   }
 

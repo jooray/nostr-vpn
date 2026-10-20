@@ -42,7 +42,7 @@ async function controlledApi(page: Page) {
     if (new URL(route.request().url()).pathname === '/api/tick') {
       polls.push(route);
     } else {
-      expect(new URL(route.request().url()).pathname).toBe('/api/connect_vpn');
+      expect(['/api/connect_vpn', '/api/update_settings']).toContain(new URL(route.request().url()).pathname);
       actions.push(route);
     }
   });
@@ -84,7 +84,7 @@ async function controlledApi(page: Page) {
     await expect.poll(() => actions.length).toBe(count + 1);
     return actions[count];
   }
-  return { polls, reply, poll, connect };
+  return { polls, actions, reply, poll, connect };
 }
 
 for (const staleFails of [false, true]) {
@@ -162,4 +162,95 @@ test('polling makes progress while newer polls are pending and recovers after er
   await api.reply(await api.poll(), state('Recovered VPN status'));
   await expect(page.locator('.header-vpn-text')).toHaveText('Recovered VPN status');
   await expect(page.locator('.notice-row.error')).toHaveCount(0);
+});
+
+for (const editor of ['settings', 'WireGuard', 'WireGuard import'] as const) {
+  for (const fails of [false, true]) {
+    test(`${editor} preserves newer edits after a save ${fails ? 'failure' : 'success'}`, async ({ page }, testInfo) => {
+      const api = await controlledApi(page);
+      await api.reply(api.polls[0], state('VPN off'));
+      const settings = editor === 'settings';
+      await page.getByRole('button', { name: settings ? 'Settings' : 'Exit Nodes', exact: true }).click();
+      const form = settings ? page.locator('.settings-form') : page.locator('form').filter({
+        has: page.getByRole('heading', { name: 'WireGuard Upstream' }),
+      });
+      const field = form.getByLabel(settings ? 'Name' : 'Config', { exact: true });
+      const save = form.getByRole('button', { name: settings ? 'Save settings' : 'Save', exact: true });
+      const submitted = settings ? '  Device A  ' : '# Config A';
+      const edited = settings ? 'Device B' : '# Config B';
+      if (editor === 'WireGuard import') {
+        await form.locator('input[type="file"]').setInputFiles({
+          name: 'test.conf', mimeType: 'text/plain', buffer: Buffer.from(submitted),
+        });
+      } else {
+        await field.fill(submitted);
+        await save.click();
+      }
+      await expect.poll(() => api.actions.length).toBe(1);
+      expect(api.actions[0].request().postDataJSON()[settings ? 'nodeName' : 'wireguardExitConfig']).toBe(submitted);
+      await expect(save).toBeDisabled();
+      await field.fill(edited);
+
+      const savedState = {
+        ...state('Saved'), nodeName: 'Device A', wireguardExitConfigured: true,
+      };
+      await api.reply(api.actions[0], fails ? 'Save failed' : savedState);
+      await expect(field).toHaveValue(edited);
+      await expect(save).toBeEnabled();
+      if (fails) await expect(page.locator('.notice-row.error')).toHaveText('Save failed');
+
+      await api.reply(await api.poll(), { ...savedState, vpnStatus: 'Fresh poll' });
+      await expect(page.locator('.header-vpn-text')).toHaveText('Fresh poll');
+      await expect(field).toHaveValue(edited);
+      await expect(save).toBeEnabled();
+      if (!fails) {
+        await page.setViewportSize({ width: 1280, height: 1800 });
+        await form.screenshot({ path: testInfo.outputPath('retained-draft.png') });
+      }
+
+      // An untouched retry accepts the server's normalized (or hidden) value.
+      await save.click();
+      await expect.poll(() => api.actions.length).toBe(2);
+      expect(api.actions[1].request().postDataJSON()[settings ? 'nodeName' : 'wireguardExitConfig']).toBe(edited);
+      await api.reply(api.actions[1], { ...savedState, nodeName: 'Normalized Device B' });
+      await expect(field).toHaveValue(settings ? 'Normalized Device B' : '');
+      await expect(save).toBeDisabled();
+      await expect(page.locator('.notice-row.error')).toHaveCount(0);
+      await api.reply(await api.poll(), { ...savedState, nodeName: 'Polled device' });
+      await expect(field).toHaveValue(settings ? 'Polled device' : '');
+      await expect(save).toBeDisabled();
+    });
+  }
+}
+
+test('WireGuard file reading does not replace edits made while the import is pending', async ({ page }) => {
+  await page.addInitScript(() => {
+    const text = File.prototype.text;
+    File.prototype.text = async function () {
+      const value = await text.call(this);
+      document.documentElement.dataset.fileReadPending = 'true';
+      await new Promise<void>((resolve) => document.addEventListener('finish-file-read', () => resolve(), { once: true }));
+      document.documentElement.dataset.fileReadReady = 'true';
+      return value;
+    };
+  });
+  const api = await controlledApi(page);
+  await api.reply(api.polls[0], state('VPN off'));
+  await page.getByRole('button', { name: 'Exit Nodes', exact: true }).click();
+  const form = page.locator('form').filter({ has: page.getByRole('heading', { name: 'WireGuard Upstream' }) });
+  const field = form.getByLabel('Config', { exact: true });
+  const save = form.getByRole('button', { name: 'Save', exact: true });
+  const input = form.locator('input[type="file"]');
+  await input.setInputFiles({ name: 'test.conf', mimeType: 'text/plain', buffer: Buffer.from('# Imported config') });
+  await expect(page.locator('html')).toHaveAttribute('data-file-read-pending', 'true');
+  await field.fill('# Newer edit');
+  await page.evaluate(() => document.dispatchEvent(new Event('finish-file-read')));
+  await expect(page.locator('html')).toHaveAttribute('data-file-read-ready', 'true');
+  await expect(field).toHaveValue('# Newer edit');
+  await expect(input).toHaveValue('');
+  await expect(save).toBeEnabled();
+  expect(api.actions).toHaveLength(0);
+  await api.reply(await api.poll(), state('Fresh poll'));
+  await expect(field).toHaveValue('# Newer edit');
+  await expect(save).toBeEnabled();
 });
