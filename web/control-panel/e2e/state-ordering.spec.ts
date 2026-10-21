@@ -254,3 +254,120 @@ test('WireGuard file reading does not replace edits made while the import is pen
   await expect(field).toHaveValue('# Newer edit');
   await expect(save).toBeEnabled();
 });
+
+async function copyScenario(page: Page, modern: 'success' | 'reject' | 'pending', fallback: 'success' | 'false' | 'throw') {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(({ modern, fallback }) => {
+    Object.defineProperty(navigator, 'clipboard', { value: {
+      writeText(value: string) {
+        const data = document.documentElement.dataset;
+        data.copyAttempt = value;
+        const mode = data.clipboardMode || modern;
+        if (mode === 'pending') return new Promise<void>((resolve, reject) => {
+          document.addEventListener('finish-copy', () => {
+            data.copyCompleted = 'true';
+            if (data.clipboardResult === 'reject') reject(new Error('Clipboard denied'));
+            else resolve();
+          }, { once: true });
+        });
+        return mode === 'reject' ? Promise.reject(new Error('Clipboard denied')) : Promise.resolve();
+      },
+    } });
+    document.execCommand = (command: string) => {
+      const data = document.documentElement.dataset;
+      data.fallbackCommand = command;
+      data.fallbackValue = (document.activeElement as HTMLTextAreaElement).value;
+      if (fallback === 'throw') throw new Error('Fallback failed');
+      return fallback === 'success';
+    };
+  }, { modern, fallback });
+  const api = await controlledApi(page);
+  function networkState(id: string) {
+    const next = state('VPN off');
+    next.networks[0].networkId = id;
+    return next;
+  }
+  await api.reply(api.polls[0], networkState('network-a'));
+  await page.getByRole('button', { name: 'Add Device', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add Device' });
+  const copy = dialog.locator('.detail-list > div').filter({
+    has: page.getByText('Network ID', { exact: true }),
+  }).getByRole('button');
+  return { api, networkState, dialog, copy, errors };
+}
+
+for (const modern of ['success', 'reject'] as const) {
+  test(`copy reports ${modern === 'success' ? 'modern' : 'fallback'} clipboard success`, async ({ page }, testInfo) => {
+    const { dialog, copy, errors } = await copyScenario(page, modern, 'success');
+    await copy.click();
+    await expect(copy).toHaveAccessibleName('Network ID copied');
+    await expect(copy).toHaveClass(/copied/);
+    await expect(page.locator('.notice-row')).toHaveText('Network ID copied');
+    await expect(page.locator('html')).toHaveAttribute('data-copy-attempt', 'network-a');
+    if (modern === 'reject') {
+      await expect(page.locator('html')).toHaveAttribute('data-fallback-command', 'copy');
+      await expect(page.locator('html')).toHaveAttribute('data-fallback-value', 'network-a');
+    } else {
+      await expect(page.locator('html')).not.toHaveAttribute('data-fallback-command');
+    }
+    await expect(page.locator('body > textarea')).toHaveCount(0);
+    await dialog.screenshot({ path: testInfo.outputPath('copy-success.png') });
+    await page.clock.runFor(2000);
+    await expect(copy).toHaveAccessibleName('Copy Network ID');
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const fallback of ['false', 'throw'] as const) {
+  test(`copy fallback ${fallback} shows failure and supports retry`, async ({ page }, testInfo) => {
+    const { dialog, copy, errors } = await copyScenario(page, 'reject', fallback);
+    await copy.click();
+    await expect(page.locator('html')).toHaveAttribute('data-fallback-value', 'network-a');
+    await expect(page.locator('body > textarea')).toHaveCount(0);
+    await expect(dialog.getByRole('status')).toHaveText('Copy failed. Retry');
+    await expect(copy).toHaveAccessibleName('Copy Network ID failed. Try again');
+    await expect(copy).toBeEnabled();
+    await expect(copy).toBeFocused();
+    await expect(copy).not.toHaveClass(/copied/);
+    await expect(page.locator('.notice-row')).toHaveCount(0);
+    expect(errors).toEqual([]);
+    await dialog.screenshot({ path: testInfo.outputPath('copy-failure.png') });
+
+    await page.evaluate(() => { document.documentElement.dataset.clipboardMode = 'success'; });
+    await page.keyboard.press('Enter');
+    await expect(copy).toHaveAccessibleName('Network ID copied');
+    await expect(dialog.getByRole('status')).toHaveCount(0);
+    await expect(page.locator('.notice-row')).toHaveText('Network ID copied');
+    await expect(page.locator('body > textarea')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const result of ['success', 'reject'] as const) {
+  test(`copy ignores a pending ${result} result for a replaced value`, async ({ page }) => {
+    const { api, networkState, dialog, copy, errors } = await copyScenario(page, 'pending', 'false');
+    await copy.click();
+    await expect(page.locator('html')).toHaveAttribute('data-copy-attempt', 'network-a');
+    await api.reply(await api.poll(), networkState('network-b'));
+    await expect(dialog.getByText('network-b', { exact: true })).toBeVisible();
+    await page.evaluate((result) => {
+      document.documentElement.dataset.clipboardResult = result;
+      document.dispatchEvent(new Event('finish-copy'));
+    }, result);
+    await expect(page.locator('html')).toHaveAttribute('data-copy-completed', 'true');
+    await expect(copy).toBeEnabled();
+    await expect(copy).toHaveAccessibleName('Copy Network ID');
+    await expect(copy).not.toHaveClass(/copied/);
+    await expect(dialog.getByRole('status')).toHaveCount(0);
+    await expect(page.locator('.notice-row')).toHaveCount(0);
+
+    await page.evaluate(() => { document.documentElement.dataset.clipboardMode = 'success'; });
+    await copy.click();
+    await expect(page.locator('html')).toHaveAttribute('data-copy-attempt', 'network-b');
+    await expect(copy).toHaveAccessibleName('Network ID copied');
+    await api.reply(await api.poll(), networkState('network-c'));
+    await expect(copy).toHaveAccessibleName('Copy Network ID');
+    expect(errors).toEqual([]);
+  });
+}
