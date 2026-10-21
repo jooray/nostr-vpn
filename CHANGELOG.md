@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- Update FIPS and peer messaging dependencies to recover Bluetooth reconnects
+  after address reuse, retain WebRTC connection cleanup and consent fixes, and
+  harden handshake replies and DNS query handling.
+
 ## 4.1.18 - 2026-10-19
 
 ### Release notes
