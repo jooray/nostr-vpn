@@ -90,7 +90,7 @@ jobs:
         run: choco install llvm innosetup -y --no-progress
 
       - name: Run Rust tests
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked -- --test-threads=1
 
       - name: Build CLI release binary
         run: cargo build --release -p nvpn --locked
