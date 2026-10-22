@@ -100,7 +100,12 @@ impl SharedSpilmanClientStoreLock {
                 store_path,
                 _file: file,
             })),
-            Err(error) if nonblocking && error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(error)
+                if nonblocking
+                    && error.raw_os_error() == fs2::lock_contended_error().raw_os_error() =>
+            {
+                Ok(None)
+            }
             Err(error) => Err(format!(
                 "failed to lock Spilman client store {}: {error}",
                 store_path.display()

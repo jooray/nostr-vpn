@@ -15,10 +15,16 @@ on:
         description: Generate the initial NuGet lock before verifying it
         type: boolean
         default: false
+      test_scope:
+        description: Storage scope reuses prior workspace evidence and checks the storage fix and callers
+        type: choice
+        options: [workspace, storage]
+        default: workspace
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: 2
+  NVPN_WINDOWS_TEST_SCOPE: ${{ inputs.test_scope || 'workspace' }}
 
 jobs:
   build-inputs:
@@ -90,7 +96,17 @@ jobs:
         run: choco install llvm innosetup -y --no-progress
 
       - name: Run Rust tests
+        if: ${{ inputs.test_scope != 'storage' }}
         run: cargo test --workspace --locked -- --test-threads=1
+
+      - name: Verify storage locking and affected callers
+        if: ${{ inputs.test_scope == 'storage' }}
+        run: |
+          $features = 'wallet,spilman-wallet-http,spilman-configurable-host-reqwest'
+          cargo test -p nvpn-cashu-service --locked --features $features --test spilman_storage_lock -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Native storage lock integration failed' }
+          cargo test -p nvpn-cashu-service --locked --features $features --lib spilman -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Native Spilman caller checks failed' }
 
       - name: Build CLI release binary
         run: cargo build --release -p nvpn --locked

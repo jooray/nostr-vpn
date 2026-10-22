@@ -23,6 +23,7 @@ $manifest = Get-Content -Raw -LiteralPath "$archive.files.json" | ConvertFrom-Js
 # This is an artifact-preparation receipt, not a complete service/network gate.
 [ordered]@{
   kind = 'windows-portable-preparation'
+  testScope = $env:NVPN_WINDOWS_TEST_SCOPE
   source = (& git -C (Split-Path $PSScriptRoot) rev-parse HEAD | Out-String).Trim()
   tree = (& git -C (Split-Path $PSScriptRoot) rev-parse 'HEAD^{tree}' | Out-String).Trim()
   sdk = (& dotnet --version | Out-String).Trim()
