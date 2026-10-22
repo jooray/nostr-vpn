@@ -90,6 +90,7 @@ esac
 
 run_ps "\$ErrorActionPreference = 'Stop'
 Set-Location '$GUEST_REPO'
+. .\\scripts\\windows-build-inputs.ps1
 \$head = (git rev-parse HEAD).Trim()
 \$tree = (git rev-parse 'HEAD^{tree}').Trim()
 \$status = (git status --porcelain --untracked-files=all | Out-String).Trim()
@@ -168,7 +169,7 @@ foreach (\$entry in \$payloadFiles.GetEnumerator()) {
   ) {
     throw ('Windows installer smoke mislabeled its installed payload: ' + \$entry.Key)
   }
-  \$publishHash = (Get-FileHash -Algorithm SHA256 -LiteralPath \$entry.Value.path).Hash.ToLowerInvariant()
+  \$publishHash = (Get-NvpnFileHash -Algorithm SHA256 -LiteralPath \$entry.Value.path).Hash.ToLowerInvariant()
   \$publishSize = (Get-Item -LiteralPath \$entry.Value.path).Length
   if (
     \$installed.sha256 -ne \$publishHash -or
@@ -225,18 +226,18 @@ if ((Get-Content -Raw -LiteralPath \$portableSmoke | ConvertFrom-Json).ok -ne \$
   fipsVersion = '$EXPECTED_FIPS_VERSION'
   tag = '$SMOKE_TAG'
   installerName = (Split-Path -Leaf \$installer)
-  installerSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath \$installer).Hash.ToLowerInvariant()
+  installerSha256 = (Get-NvpnFileHash -Algorithm SHA256 -LiteralPath \$installer).Hash.ToLowerInvariant()
   installerSize = (Get-Item -LiteralPath \$installer).Length
   installerInstalledAndLaunched = \$true
   installedAppStayedAlive = \$true
-  smokeReceiptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath \$smokePath).Hash.ToLowerInvariant()
+  smokeReceiptSha256 = (Get-NvpnFileHash -Algorithm SHA256 -LiteralPath \$smokePath).Hash.ToLowerInvariant()
   payloads = \$payloads
   portable = [ordered]@{
     name = (Split-Path -Leaf \$guiArchive)
-    sha256 = (Get-FileHash -LiteralPath \$guiArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    sha256 = (Get-NvpnFileHash -LiteralPath \$guiArchive -Algorithm SHA256).Hash.ToLowerInvariant()
     size = (Get-Item -LiteralPath \$guiArchive).Length
     launched = \$true
-    smokeReceiptSha256 = (Get-FileHash -LiteralPath \$portableSmoke -Algorithm SHA256).Hash.ToLowerInvariant()
+    smokeReceiptSha256 = (Get-NvpnFileHash -LiteralPath \$portableSmoke -Algorithm SHA256).Hash.ToLowerInvariant()
     files = (Get-Content -Raw -LiteralPath (Join-Path '$REMOTE_GATE_DIR' 'nostr-vpn-$SMOKE_TAG-windows-x64.zip.files.json') | ConvertFrom-Json)
   }
   builtOnWindowsVm = \$true

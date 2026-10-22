@@ -38,7 +38,10 @@ jobs:
         run: |
           # Select the installed .NET 8 SDK even when the runner also has .NET 10.
           Set-Content global.json '{"sdk":{"version":"8.0.420","rollForward":"disable"}}'
-          ./scripts/test-windows-build-inputs.ps1 -GenerateLock:$${{ inputs.generate_lock }}
+          $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/test-windows-build-inputs.ps1')
+          if ('${{ inputs.generate_lock }}' -eq 'true') { $arguments += '-GenerateLock' }
+          & powershell.exe @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell input checks failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-build-inputs-${{ github.sha }}

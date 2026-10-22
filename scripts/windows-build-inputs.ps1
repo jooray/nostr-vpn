@@ -1,3 +1,15 @@
+# Avoid module autoload differences when Windows PowerShell inherits a pwsh environment.
+function Get-NvpnFileHash {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)][Alias('Path')][string]$LiteralPath,
+        [ValidateSet('SHA256', 'SHA512')][string]$Algorithm = 'SHA256'
+    )
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    $hasher = if ($Algorithm -eq 'SHA512') { [Security.Cryptography.SHA512]::Create() } else { [Security.Cryptography.SHA256]::Create() }
+    try { [pscustomobject]@{ Hash = [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '') } }
+    finally { $hasher.Dispose(); $stream.Dispose() }
+}
+
 # Verify implicit SDK downloads before consuming them in a build.
 function Assert-PinnedDownloadPackages {
     param([string] $AssetsPath, [string] $PinsPath)
@@ -22,7 +34,7 @@ function Assert-PinnedDownloadPackages {
             })
             if ($archives.Count -eq 0) { throw "Restored SDK package archive is missing: $key" }
             foreach ($archive in $archives) {
-                $actual = (Get-FileHash -LiteralPath $archive -Algorithm SHA512).Hash
+                $actual = (Get-NvpnFileHash -LiteralPath $archive -Algorithm SHA512).Hash
                 if ($actual -ne $pin[0].sha512) { throw "SDK package content hash mismatch: $key" }
             }
             $checked[$key] = $true

@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'windows-build-inputs.ps1')
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 if (!$ArtifactRoot) {
@@ -73,7 +74,7 @@ try {
     $installedPayloads[$entry.Key] = [ordered]@{
       file = $entry.Value.File
       sha256 = (
-        Get-FileHash -Algorithm SHA256 -LiteralPath $entry.Value.Path
+        Get-NvpnFileHash -Algorithm SHA256 -LiteralPath $entry.Value.Path
       ).Hash.ToLowerInvariant()
       size = (Get-Item -LiteralPath $entry.Value.Path).Length
     }
@@ -85,8 +86,8 @@ try {
       $name = $file.FullName.Substring($publishRoot.Length + 1).Replace([char]92, [char]47)
       $installed = Join-Path $InstallDir $name
       if (!(Test-Path -LiteralPath $installed -PathType Leaf)) { throw "Installed payload is missing $name" }
-      $hash = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash.ToLowerInvariant()
-      if ($hash -ne (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()) {
+      $hash = (Get-NvpnFileHash -LiteralPath $installed -Algorithm SHA256).Hash.ToLowerInvariant()
+      if ($hash -ne (Get-NvpnFileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()) {
         throw "Installed payload differs from publish directory: $name"
       }
       $installedFiles[$name] = [ordered]@{ sha256 = $hash; size = (Get-Item -LiteralPath $installed).Length }

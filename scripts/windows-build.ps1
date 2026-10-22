@@ -133,7 +133,7 @@ function Test-FilesDiffer {
   if (!(Test-Path $Left) -or !(Test-Path $Right)) {
     return $true
   }
-  return (Get-FileHash -Algorithm SHA256 $Left).Hash -ne (Get-FileHash -Algorithm SHA256 $Right).Hash
+  return (Get-NvpnFileHash -Algorithm SHA256 $Left).Hash -ne (Get-NvpnFileHash -Algorithm SHA256 $Right).Hash
 }
 
 function Prepare-CargoLockRestore {

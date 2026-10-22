@@ -4,6 +4,7 @@ param(
   [Parameter(Mandatory = $true)][string]$InstalledManifestPath
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windows-build-inputs.ps1')
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $PublishDir = [IO.Path]::GetFullPath($PublishDir)
 $installed = Get-Content -Raw -LiteralPath $InstalledManifestPath | ConvertFrom-Json
@@ -16,7 +17,7 @@ $manifest = [ordered]@{}
 foreach ($file in $files) {
   if ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Portable payload contains a reparse point' }
   $name = $file.FullName.Substring($PublishDir.Length + 1).Replace([char]92, [char]47)
-  $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  $hash = (Get-NvpnFileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   $actual = $installed.PSObject.Properties[$name].Value
   if (!$actual -or $actual.sha256 -ne $hash -or [long]$actual.size -ne $file.Length) {
     throw "Portable payload differs from installed file: $name"

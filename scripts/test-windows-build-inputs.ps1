@@ -16,10 +16,10 @@ if ($GenerateLock) {
   if ($LASTEXITCODE -ne 0) { throw 'Lock generation failed' }
 }
 $lock = Join-Path $projectDir 'packages.lock.json'
-$before = (Get-FileHash -LiteralPath $lock -Algorithm SHA256).Hash
+$before = (Get-NvpnFileHash -LiteralPath $lock -Algorithm SHA256).Hash
 & dotnet restore $project --runtime win-x64 -p:SelfContained=true --locked-mode
 if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed' }
-if ((Get-FileHash -LiteralPath $lock -Algorithm SHA256).Hash -ne $before) { throw 'Locked restore changed its lock file' }
+if ((Get-NvpnFileHash -LiteralPath $lock -Algorithm SHA256).Hash -ne $before) { throw 'Locked restore changed its lock file' }
 $assets = Join-Path $projectDir 'obj/project.assets.json'
 $pins = Join-Path $projectDir 'sdk-packages.json'
 Assert-PinnedDownloadPackages -AssetsPath $assets -PinsPath $pins
@@ -51,7 +51,7 @@ try {
     source = (& git -C $root rev-parse HEAD | Out-String).Trim()
     sdk = (& dotnet --version | Out-String).Trim()
     lockSha256 = $before.ToLowerInvariant()
-    sdkPinsSha256 = (Get-FileHash -LiteralPath $pins -Algorithm SHA256).Hash.ToLowerInvariant()
+    sdkPinsSha256 = (Get-NvpnFileHash -LiteralPath $pins -Algorithm SHA256).Hash.ToLowerInvariant()
     modifiedPinRejected = $rejected
     unpinnedVersionRejected = $versionRejected
   } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $ArtifactRoot 'receipt.json')
