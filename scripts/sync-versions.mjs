@@ -111,6 +111,12 @@ const targets = [
       (_, prefix, suffix) => `${prefix}${version}${suffix}`,
     ),
   ),
+  makeTarget('haps.toml', (text, version) =>
+    text.replace(
+      /^(version\s*=\s*")[^"\n]+(")/gm,
+      (_, prefix, suffix) => `${prefix}${version}${suffix}`,
+    ),
+  ),
   makeTarget('linux/Cargo.lock', (text, version) =>
     bumpCargoLockPackages(
       text,

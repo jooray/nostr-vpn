@@ -34,6 +34,8 @@ test('version synchronization leaves the workspace usable by locked Cargo comman
     passed(run(process.execPath, ['scripts/sync-versions.mjs', '--check']))
     assert.match(readFileSync(join(root, 'Cargo.toml'), 'utf8'), /nostr-vpn-core = \{ version = "=4\.1\.11"/)
     assert.match(readFileSync(join(root, 'Cargo.toml'), 'utf8'), /nostr-vpn-wintun = \{ version = "=4\.1\.11"/)
+    const hapsVersions = [...readFileSync(join(root, 'haps.toml'), 'utf8').matchAll(/^version = "([^"]+)"/gm)]
+    assert.deepEqual(hapsVersions.map(match => match[1]), ['4.1.11', '4.1.11'])
     passed(run('cargo', ['metadata', '--offline', '--locked', '--format-version=1']))
   } finally {
     rmSync(root, { recursive: true, force: true })
