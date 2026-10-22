@@ -4,7 +4,27 @@ const CONFIG_PATH_ENV: &str = "NVPN_CONFIG_PATH";
 
 pub(crate) fn install_cli(args: InstallCliArgs) -> Result<()> {
     let destination = args.path.unwrap_or_else(default_cli_install_path);
-    install_cli_to_path(&destination, args.force)
+    install_cli_to_path(&destination, args.force).map_err(|error| {
+        if !error
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+        {
+            return error;
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        let (user_path, shell) = (r#""$HOME/.local/bin/nvpn""#, "");
+        #[cfg(target_os = "windows")]
+        let (user_path, shell) = (r#""$env:USERPROFILE\.local\bin\nvpn.exe""#, " (PowerShell)");
+        let force = if args.force { " --force" } else { "" };
+        error.context(format!(
+            "permission denied installing nvpn CLI to {}. \
+             Retry the same command with administrator privileges, or use a directory you own{shell}:\n  \
+             nvpn install-cli{force} --path {user_path}\n\
+             Add that directory to PATH if needed",
+            destination.display()
+        ))
+    })
 }
 
 pub(crate) fn uninstall_cli(args: UninstallCliArgs) -> Result<()> {
