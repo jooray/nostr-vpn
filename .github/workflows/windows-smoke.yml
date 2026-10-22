@@ -74,16 +74,16 @@ jobs:
         with:
           dotnet-version: 8.0.420
 
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: false
-
       - name: Verify production PowerShell build inputs before compiling
         run: |
           Set-Content global.json '{"sdk":{"version":"8.0.420","rollForward":"disable"}}'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-build-inputs.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell input checks failed' }
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: false
 
       - name: Install Windows native package dependencies
         run: choco install llvm innosetup -y --no-progress
