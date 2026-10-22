@@ -10,6 +10,25 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UdpSocket;
 
+async fn bind_dns_sockets() -> (TcpListener, UdpSocket, SocketAddr) {
+    // Windows may reserve a TCP-selected ephemeral port in the UDP namespace.
+    // Keep both sockets bound before using the shared DNS fixture address.
+    for _ in 0..128 {
+        let udp = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let address = udp.local_addr().unwrap();
+        match TcpListener::bind(address).await {
+            Ok(tcp) => return (tcp, udp, address),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::AddrInUse | io::ErrorKind::PermissionDenied
+                ) => {}
+            Err(error) => panic!("bind DNS fixture TCP socket: {error}"),
+        }
+    }
+    panic!("could not reserve one fixture port for both TCP and UDP");
+}
+
 struct Server {
     address: SocketAddr,
     seen: Arc<Mutex<Vec<String>>>,
@@ -26,9 +45,7 @@ impl Drop for Server {
 
 impl Server {
     async fn start() -> Self {
-        let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = tcp.local_addr().unwrap();
-        let udp = UdpSocket::bind(address).await.unwrap();
+        let (tcp, udp, address) = bind_dns_sockets().await;
         let seen = Arc::new(Mutex::new(Vec::new()));
         let observed = seen.clone();
         let udp_task = tokio::spawn(async move {
@@ -319,9 +336,7 @@ async fn required_dns_tls_protects_its_socket_and_does_not_fall_back_after_a_bad
         )
         .unwrap();
     let acceptor = TlsAcceptor::from(Arc::new(server));
-    let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = tcp.local_addr().unwrap();
-    let plaintext = UdpSocket::bind(address).await.unwrap();
+    let (tcp, plaintext, address) = bind_dns_sockets().await;
     let task = tokio::spawn(async move {
         loop {
             let (socket, _) = tcp.accept().await.unwrap();

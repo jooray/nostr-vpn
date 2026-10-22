@@ -84,6 +84,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-bin: false
+          cache-on-failure: true
 
       - name: Install Windows native package dependencies
         run: choco install llvm innosetup -y --no-progress

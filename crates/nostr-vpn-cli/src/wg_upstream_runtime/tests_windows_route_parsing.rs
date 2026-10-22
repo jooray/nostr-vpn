@@ -341,6 +341,7 @@ Idx     Met         MTU          State                Name
     #[cfg(target_os = "windows")]
     #[test]
     fn journaled_pending_cleanup_retry_retires_exact_durable_entries() {
+        let _pending_cleanup = PENDING_CLEANUP_TEST_LOCK.lock().unwrap();
         assert!(pending_windows_native_cleanup_snapshot().is_empty());
         assert!(pending_windows_route_cleanup_snapshot().is_empty());
 

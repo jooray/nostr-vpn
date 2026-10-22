@@ -748,6 +748,7 @@ fn windows_interface_constructor_retains_failed_rollback() {
 
 #[test]
 fn windows_failed_active_guard_cleanup_is_snapshotted_and_retried_by_owned_identity() {
+    let _pending_cleanup = PENDING_CLEANUP_TEST_LOCK.lock().unwrap();
     let prior_pending = take_pending_windows_route_cleanup();
     assert!(
         prior_pending.is_empty(),
