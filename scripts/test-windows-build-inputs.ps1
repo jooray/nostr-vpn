@@ -1,6 +1,12 @@
 param([switch]$GenerateLock, [string]$ArtifactRoot)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
+foreach ($name in @('windows-build.ps1', 'windows-build-inputs.ps1', 'windows-portable-package.ps1', 'windows-app-launch-smoke.ps1', 'windows-installer-smoke.ps1', 'test-windows-build-inputs.ps1')) {
+  $tokens = $null
+  $parseErrors = $null
+  [void][Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $name), [ref]$tokens, [ref]$parseErrors)
+  if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+}
 $projectDir = Join-Path $root 'windows/NostrVpn.Windows'
 $project = Join-Path $projectDir 'NostrVpn.Windows.csproj'
 if (!$ArtifactRoot) { $ArtifactRoot = Join-Path $root 'artifacts/windows-build-inputs' }
