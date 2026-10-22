@@ -8,6 +8,14 @@ on:
         type: choice
         default: both
         options: [both, hosted, fips]
+      app_commit:
+        description: Exact application commit
+        type: string
+        default: 5c1b2f0606f18387ace32f5712dde9b63a274620
+      app_tree:
+        description: Exact application tree
+        type: string
+        default: bc66adf87c8f0a8fe8cb1df4ccc3b4462e369335
 
 permissions:
   contents: read
@@ -29,10 +37,13 @@ jobs:
     if: inputs.lane != 'fips'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
+    env:
+      EXPECTED_APP_COMMIT: ${{ inputs.app_commit }}
+      EXPECTED_APP_TREE: ${{ inputs.app_tree }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 5c1b2f0606f18387ace32f5712dde9b63a274620
+          ref: ${{ inputs.app_commit }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.95.0
@@ -48,15 +59,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config ripgrep
       - uses: Swatinem/rust-cache@v2
         with:
-          cache-bin: false
+          cache-bin: true
           cache-on-failure: true
       - name: Bind frozen source and toolchains
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts/hosted-4119
-          test "$(git rev-parse HEAD)" = 5c1b2f0606f18387ace32f5712dde9b63a274620
-          test "$(git rev-parse 'HEAD^{tree}')" = bc66adf87c8f0a8fe8cb1df4ccc3b4462e369335
+          [[ "$EXPECTED_APP_COMMIT" =~ ^[0-9a-f]{40}$ && "$EXPECTED_APP_TREE" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$EXPECTED_APP_COMMIT"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_APP_TREE"
           test -z "$(git status --porcelain)"
           { git rev-parse HEAD 'HEAD^{tree}'; rustc -Vv; cargo -V; node --version; docker version; df -h .; } > artifacts/hosted-4119/inputs.txt
       - name: Record reviewed binding-generator maintenance advisory
@@ -86,7 +98,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: nvpn-4119-hosted-5c1b2f0
+          name: nvpn-4119-hosted-${{ inputs.app_commit }}
           path: |
             artifacts/hosted-4119
             artifacts/release-gate-state

@@ -5,9 +5,9 @@ const CONFIG_PATH_ENV: &str = "NVPN_CONFIG_PATH";
 pub(crate) fn install_cli(args: InstallCliArgs) -> Result<()> {
     let destination = args.path.unwrap_or_else(default_cli_install_path);
     install_cli_to_path(&destination, args.force).map_err(|error| {
-        if !error
+        if error
             .downcast_ref::<std::io::Error>()
-            .is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+            .is_none_or(|error| error.kind() != std::io::ErrorKind::PermissionDenied)
         {
             return error;
         }
