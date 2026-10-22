@@ -2,6 +2,12 @@ name: NVPN 4.1.19 hosted release checks
 
 on:
   workflow_dispatch:
+    inputs:
+      lane:
+        description: Hosted app checks, FIPS checks, or both
+        type: choice
+        default: both
+        options: [both, hosted, fips]
 
 permissions:
   contents: read
@@ -20,6 +26,7 @@ env:
 
 jobs:
   hosted:
+    if: inputs.lane != 'fips'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     steps:
@@ -52,6 +59,23 @@ jobs:
           test "$(git rev-parse 'HEAD^{tree}')" = bc66adf87c8f0a8fe8cb1df4ccc3b4462e369335
           test -z "$(git status --porcelain)"
           { git rev-parse HEAD 'HEAD^{tree}'; rustc -Vv; cargo -V; node --version; docker version; df -h .; } > artifacts/hosted-4119/inputs.txt
+      - name: Record reviewed binding-generator maintenance advisory
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e "$CARGO_HOME/audit.toml"
+          # RUSTSEC-2026-0374 is informational=unmaintained, with no vulnerability
+          # in the advisory. basic-toml 0.1.10 is reached through Askama's derive
+          # macro in UniFFI 0.29.5 and parses build-time askama.toml configuration.
+          # It is not the VPN runtime TOML parser. Retire this exact exception
+          # when upgrading UniFFI/Askama removes basic-toml from the lockfiles.
+          # https://rustsec.org/advisories/RUSTSEC-2026-0374.html
+          cat > "$CARGO_HOME/audit.toml" <<'POLICY'
+          [advisories]
+          ignore = ["RUSTSEC-2026-0374"]
+          POLICY
+          cp "$CARGO_HOME/audit.toml" artifacts/hosted-4119/reviewed-audit-policy.toml
+          sha256sum "$CARGO_HOME/audit.toml" >> artifacts/hosted-4119/inputs.txt
       - name: Run canonical hosted release gate
         shell: bash
         env:
@@ -73,6 +97,7 @@ jobs:
           if-no-files-found: error
 
   fips:
+    if: inputs.lane != 'hosted'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
