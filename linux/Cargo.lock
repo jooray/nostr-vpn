@@ -4020,7 +4020,7 @@ dependencies = [
 
 [[package]]
 name = "nostr-vpn-app-core"
-version = "4.1.18"
+version = "4.1.19"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4050,7 +4050,7 @@ dependencies = [
 
 [[package]]
 name = "nostr-vpn-core"
-version = "4.1.18"
+version = "4.1.19"
 dependencies = [
  "android-native-keyring-store",
  "anyhow",
@@ -4094,7 +4094,7 @@ dependencies = [
 
 [[package]]
 name = "nostr-vpn-linux"
-version = "4.1.18"
+version = "4.1.19"
 dependencies = [
  "gio",
  "glib",

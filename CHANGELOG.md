@@ -2,13 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 4.1.19 - 2026-10-22
+
+### Improved
+
+- Describe desktop and command-line source builds in a versioned Haps manifest.
 
 ### Fixed
 
 - Update FIPS and peer messaging dependencies to recover Bluetooth reconnects
   after address reuse, retain WebRTC connection cleanup and consent fixes, and
   harden handshake replies and DNS query handling.
+- Preserve newer control-panel state and edits when older requests finish,
+  and report clipboard failures with retry feedback.
+- Explain CLI installation permission failures and how to install into a
+  directory owned by the user.
+- Update TLS certificate validation dependencies on desktop and mobile,
+  including the separately resolved Linux desktop app.
 
 ## 4.1.18 - 2026-10-19
 

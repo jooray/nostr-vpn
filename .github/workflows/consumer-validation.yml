@@ -39,6 +39,7 @@ jobs:
         run: |
           mkdir -p validation
           cargo test --locked -p nvpn platform_routing 2>&1 | tee validation/platform-routing.log
+          cargo test --locked -p nvpn install_cli_ 2>&1 | tee validation/cli-install.log
           cargo test --locked -p nostr-vpn-core --lib --features control-pubsub,updater \
             -- --test-threads=1 fips_control_tcp::tests control_pubsub_runtime \
             2>&1 | tee validation/peer-control.log
@@ -46,6 +47,7 @@ jobs:
             local_mixed_transit_prefers_udp_and_recovers_from_websocket_fallback \
             2>&1 | tee validation/local-transit.log
           grep -E 'test .*platform_routing.* \.\.\. ok$' validation/platform-routing.log
+          grep -F 'test result: ok. 2 passed; 0 failed;' validation/cli-install.log
           grep -E 'test .*fips_control_tcp::tests.* \.\.\. ok$' validation/peer-control.log
           grep -E 'test .*control_pubsub_runtime.* \.\.\. ok$' validation/peer-control.log
           grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' validation/local-transit.log
