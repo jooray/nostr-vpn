@@ -765,7 +765,7 @@ sign_release_app_deep() {
     if file "$executable" | grep -Eq 'Mach-O'; then
       run_codesign --force "$(codesign_timestamp_arg)" --options runtime --sign "$identity" "$executable"
     fi
-  done < <(find "$app_path/Contents" -type f -perm -111 -print0)
+  done < <(find "$app_path/Contents" -type f -print0)
 
   run_codesign --force --deep "$(codesign_timestamp_arg)" --options runtime "${entitlement_args[@]}" --sign "$identity" "$app_path"
   codesign --verify --deep --strict --verbose=2 "$app_path"
