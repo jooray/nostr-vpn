@@ -189,7 +189,7 @@ jobs:
           test "$(git rev-parse 'HEAD^{tree}')" = "$EXPECTED_APP_TREE"
           test -z "$(git status --porcelain)"
           { git rev-parse HEAD 'HEAD^{tree}'; rustc -Vv; cargo -V; } > artifacts/relay-ingress/inputs.txt
-          cargo test --locked -p nostr-vpn-core --features updater --lib relay_ingress -- --nocapture --test-threads=1 2>&1 | tee artifacts/relay-ingress/tests.log
+          cargo test --locked -p nostr-vpn-core --features updater,control-pubsub --lib relay_ingress -- --nocapture --test-threads=1 2>&1 | tee artifacts/relay-ingress/tests.log
           grep -F 'test result: ok. 2 passed; 0 failed;' artifacts/relay-ingress/tests.log
       - uses: actions/upload-artifact@v6
         if: always()
