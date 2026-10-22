@@ -47,24 +47,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p work/hosted-4119
+          mkdir -p artifacts/hosted-4119
           test "$(git rev-parse HEAD)" = 5c1b2f0606f18387ace32f5712dde9b63a274620
           test "$(git rev-parse 'HEAD^{tree}')" = bc66adf87c8f0a8fe8cb1df4ccc3b4462e369335
           test -z "$(git status --porcelain)"
-          { git rev-parse HEAD 'HEAD^{tree}'; rustc -Vv; cargo -V; node --version; docker version; df -h .; } > work/hosted-4119/inputs.txt
+          { git rev-parse HEAD 'HEAD^{tree}'; rustc -Vv; cargo -V; node --version; docker version; df -h .; } > artifacts/hosted-4119/inputs.txt
       - name: Run canonical hosted release gate
         shell: bash
         env:
-          NVPN_RELEASE_GATE_LOG_DIR: ${{ github.workspace }}/work/hosted-4119/gate
+          NVPN_RELEASE_GATE_LOG_DIR: ${{ github.workspace }}/artifacts/hosted-4119/gate
         run: |
           set -euo pipefail
-          ./scripts/release-gate.sh --hosted 2>&1 | tee work/hosted-4119/hosted.log
+          ./scripts/release-gate.sh --hosted 2>&1 | tee artifacts/hosted-4119/hosted.log
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nvpn-4119-hosted-5c1b2f0
           path: |
-            work/hosted-4119
+            artifacts/hosted-4119
+            artifacts/release-gate-state
             artifacts/web-startos-manual-join
             artifacts/umbrel-web
             artifacts/umbrel-auth-join
@@ -86,32 +87,34 @@ jobs:
         with:
           cache-bin: false
           cache-on-failure: true
+      - name: Install native FIPS dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
       - name: Bind exact FIPS source
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p work/hosted-4119
+          mkdir -p artifacts/hosted-4119
           test "$(git rev-parse HEAD)" = f98d97e42dfa48d5fed344c43caa9ebd27b01229
           test "$(git rev-parse 'HEAD^{tree}')" = dcb1c6d80de1e28a0f442e30cba8ddadb15dc581
-          { git rev-parse HEAD 'HEAD^{tree}'; rustc -Vv; cargo -V; } > work/hosted-4119/inputs.txt
+          { git rev-parse HEAD 'HEAD^{tree}'; rustc -Vv; cargo -V; } > artifacts/hosted-4119/inputs.txt
       - name: Run release FIPS regressions and client compatibility
         shell: bash
         run: |
           set -euo pipefail
           for filter in overlay_adverts update_peers test_reply_learned_moves_configured_static_direct_peer_when_session_degraded traversal_path_liveness_keeps_mobile_safe_floor poll_nostr_discovery_configured_only_drops_nonconfigured_handoff fresh_control_with_unreturned_endpoint_data_keeps_direct_without_fallback_peer outbound_fmp_send_does_not_refresh_direct_path_liveness initiate_reply_learned_keeps_configured_transit_inside_fanout_budget forward_reply_learned_keeps_configured_transit_inside_fanout_budget client_only_negotiation_retains_router_behavior_for_legacy_neighbors; do
-            cargo test --locked -p nvpn-fips-core "$filter" -- --test-threads=1 --nocapture 2>&1 | tee "work/hosted-4119/$filter.log"
-            grep -Eq 'test result: ok\. [1-9][0-9]* passed; 0 failed;' "work/hosted-4119/$filter.log"
+            cargo test --locked -p nvpn-fips-core "$filter" -- --test-threads=1 --nocapture 2>&1 | tee "artifacts/hosted-4119/$filter.log"
+            grep -Eq 'test result: ok\. [1-9][0-9]* passed; 0 failed;' "artifacts/hosted-4119/$filter.log"
           done
       - name: Verify persistent WebSocket transit under churn
         shell: bash
         run: |
           set -euo pipefail
-          cargo test --locked -p nvpn-fips-core --test public_websocket_transit persistent_two_seed_websocket_transit_survives_client_churn -- --exact --nocapture 2>&1 | tee work/hosted-4119/transit.log
-          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' work/hosted-4119/transit.log
+          cargo test --locked -p nvpn-fips-core --test public_websocket_transit persistent_two_seed_websocket_transit_survives_client_churn -- --exact --nocapture 2>&1 | tee artifacts/hosted-4119/transit.log
+          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' artifacts/hosted-4119/transit.log
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: fips-107-release-regressions-f98d97e
-          path: work/hosted-4119
+          path: artifacts/hosted-4119
           retention-days: 14
           if-no-files-found: error
