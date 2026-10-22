@@ -25,6 +25,9 @@ use super::*;
 #[path = "tests/persistence.rs"]
 mod persistence;
 
+#[path = "tests/relay_ingress.rs"]
+mod relay_ingress;
+
 const FIPS_TEST_EVENTUAL_TIMEOUT: Duration = Duration::from_secs(15);
 
 fn peer_rating_filter(owner: &Keys) -> Filter {
