@@ -66,8 +66,10 @@ $IdleCpuSampleSeconds = Get-NvpnNumberSetting $IdleCpuSampleSeconds "NVPN_WINDOW
 $IdleCpuSettleSeconds = Get-NvpnNumberSetting $IdleCpuSettleSeconds "NVPN_WINDOWS_APP_IDLE_CPU_SETTLE_SECONDS" "NVPN_IDLE_CPU_SETTLE_SECONDS" 20
 
 function Stop-NostrVpnWindows {
-  Get-Process -Name NostrVpn.Windows -ErrorAction SilentlyContinue |
-    Stop-Process -Force -ErrorAction SilentlyContinue
+  $ownedExe = [IO.Path]::GetFullPath($AppExe)
+  Get-CimInstance Win32_Process -Filter "Name = 'NostrVpn.Windows.exe'" |
+    Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -ieq $ownedExe } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop }
 }
 
 function Get-NostrVpnEvents {

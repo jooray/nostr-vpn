@@ -180,3 +180,18 @@ checksums and package layout before upload, then requires Nostr acknowledgement.
 A Haps failure fails the final release; byte-identical retries reuse the signed
 package versions. Iris Git, native updaters and Haps consume the same release
 artifacts; Android/iOS and native installer channels retain their existing gates.
+
+Windows Haps uses `nostr-vpn-{tag}-windows-x64.zip`, containing the complete
+self-contained GUI publish directory, including its .NET runtime and Wintun.
+The installer gate compares every file to the installed payload and launches
+an extracted copy before sealing the archive hash and file manifest. Publication
+rejects a missing, modified or untested portable archive. Reserve an isolated
+Windows VM for this gate; the existing installer/service tests affect installed
+apps and must not run against an ordinary user's active session.
+
+`haps.toml` uses the artifact-only `windows-build.ps1 -Publish -SelfContained`
+path. It does not run installer migration or install a privileged VPN service.
+The app's explicit service action still requires Windows elevation. Source
+review must cover the locked Rust and NuGet dependencies, pinned implicit .NET
+SDK downloads, and the pinned Wintun DLL. A successful native build or launch
+is not an audit. Windows desktop integration requires Haps 0.1.20 or newer.

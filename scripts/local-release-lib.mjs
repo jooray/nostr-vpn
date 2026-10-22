@@ -592,6 +592,7 @@ export function validateReleaseAssetSet(
   const hasMacosUpdater = names.some((name) => /^nostr-vpn-.*-macos-arm64\.app\.tar\.gz$/.test(name))
   const hasLinuxX64Desktop = names.some((name) => /^nostr-vpn-.*-linux-x64\.(AppImage|deb)$/.test(name))
   const hasLinuxArm64Desktop = names.some((name) => /^nostr-vpn-.*-linux-arm64\.(AppImage|deb)$/.test(name))
+  const hasWindowsX64Portable = names.some((name) => /^nostr-vpn-.*-windows-x64\.zip$/.test(name))
   const hasWindowsX64Setup = names.some((name) => /^nostr-vpn-.*-windows-x64-setup\.exe$/.test(name))
   const hasSignedAndroidApk = names.some((name) => /^nostr-vpn-.*-android-arm64\.apk$/.test(name))
   const hasUnsignedAndroid = names.some((name) => /^nostr-vpn-.*-android-arm64-unsigned\.(apk|aab)$/.test(name))
@@ -644,6 +645,9 @@ export function validateReleaseAssetSet(
     }
     if (!hasLinuxArm64Cli) {
       missing.push('Linux ARM64 CLI')
+    }
+    if (!hasWindowsX64Portable) {
+      missing.push('Windows x64 portable app')
     }
     if (!hasWindowsX64Setup) {
       missing.push('Windows x64 installer')
@@ -951,6 +955,7 @@ export function describeAsset(name) {
   if (/^nostr-vpn-.*-linux-arm64\.deb$/.test(name)) {
     return 'Linux ARM64 Debian package'
   }
+  if (/^nostr-vpn-.*-windows-x64\.zip$/.test(name)) return 'Windows x64 portable app'
   if (/^nostr-vpn-.*-windows-x64-setup\.exe$/.test(name)) {
     return 'Windows x64 installer'
   }

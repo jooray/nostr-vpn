@@ -51,8 +51,17 @@ unavailable = "The established Haps desktop release is for Apple Silicon; no Int
 [targets."aarch64-unknown-linux-gnu".build]
 unavailable = "The established Haps Linux desktop package is x86-64; use the nvpn CLI package on ARM64."
 
+[targets."x86_64-pc-windows-msvc".package]
+commands = { nostr-vpn = "NostrVpn.Windows.exe" }
+desktop = { name = "Nostr VPN", command = "nostr-vpn", icon = "Assets/nostr-vpn.ico" }
+
+# Requires Rust/MSVC, LLVM and the .NET 8 SDK. This only builds files;
+# service installation remains an explicit action in the app.
 [targets."x86_64-pc-windows-msvc".build]
-unavailable = "The Windows desktop app uses the documented Windows installer workflow; Haps currently publishes only the nvpn CLI on Windows."
+commands = [
+    ["powershell.exe", "-NoProfile", "-File", "scripts/windows-build.ps1", "-Configuration", "Release", "-Publish", "-SelfContained"],
+]
+artifacts = { "." = "windows/NostrVpn.Windows/bin/Release/net8.0-windows/win-x64/publish" }
 
 [packages.nvpn.package]
 name = "nvpn"

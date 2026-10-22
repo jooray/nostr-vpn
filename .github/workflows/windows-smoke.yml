@@ -7,12 +7,44 @@ on:
         description: Git ref to test (branch, tag, or SHA). Defaults to the current ref when left blank.
         required: false
         default: ''
+      restore_only:
+        description: Verify pinned build inputs without compiling or launching apps
+        type: boolean
+        default: false
+      generate_lock:
+        description: Generate the initial NuGet lock before verifying it
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  build-inputs:
+    if: ${{ inputs.restore_only }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.420
+      - name: Verify locked native inputs without compiling
+        shell: pwsh
+        run: ./scripts/test-windows-build-inputs.ps1 -GenerateLock:$${{ inputs.generate_lock }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-inputs-${{ github.sha }}
+          path: artifacts/windows-build-inputs
+          if-no-files-found: error
+          retention-days: 7
+
   windows-smoke:
+    if: ${{ !inputs.restore_only }}
     name: Windows app smoke
     runs-on: windows-latest
     permissions:

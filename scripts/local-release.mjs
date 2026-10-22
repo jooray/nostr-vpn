@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { validateWindowsPortableArchive } from './windows-portable-release.mjs'
 import { spawnSync } from 'node:child_process'
 import { createHash, X509Certificate } from 'node:crypto'
 import {
@@ -719,6 +720,9 @@ function buildWindowsArtifacts({
     )
   }
 
+  const portableName = `nostr-vpn-${tag}-windows-x64.zip`
+  const retainedPortablePath = resolve(env.NVPN_WINDOWS_GUI_ARCHIVE_PATH
+    || join(dirname(installerArtifactPath), portableName))
   const installerName = `nostr-vpn-${tag}-windows-x64-setup.exe`
   const archiveName = `nvpn-${tag}-x86_64-pc-windows-msvc.zip`
   const retainedArchivePath = resolve(
@@ -726,7 +730,7 @@ function buildWindowsArtifacts({
       || join(dirname(installerArtifactPath), archiveName),
   )
   if (dryRun) {
-    builtLines.push('Reused the exact Windows installer and CLI payload exercised by the Windows VM gate.')
+    builtLines.push('Reused the exact Windows installer, portable GUI and CLI payloads exercised by the Windows VM gate.')
     return {}
   }
 
@@ -774,6 +778,8 @@ function buildWindowsArtifacts({
       'Windows publication installer is not the exact locally retained installer exercised by the real gate.',
     )
   }
+  const portablePayloads = validateWindowsPortableArchive(retainedPortablePath, installerReceipt, tag)
+  const portablePath = join(distDir, portableName)
   const expected = sealedInstaller.payloads
   const installerPath = join(distDir, installerName)
   const archivePath = join(distDir, archiveName)
@@ -782,6 +788,8 @@ function buildWindowsArtifacts({
   mkdirSync(distDir, { recursive: true })
   copyFileSync(retainedArchivePath, archivePath)
   copyFileSync(installerArtifactPath, installerPath)
+  copyFileSync(retainedPortablePath, portablePath)
+  validateWindowsPortableArchive(portablePath, installerReceipt, tag)
   if (
     sha256FileSync(archivePath) !== retainedArchiveSha256
     || sha256FileSync(installerPath) !== sealedInstaller.installerSha256
@@ -807,8 +815,14 @@ function buildWindowsArtifacts({
       'Windows CLI archive differs from the exact Windows VM gate payload.',
     )
   }
-  builtLines.push('Reused the exact Windows installer and CLI payload exercised by the Windows VM gate.')
+  builtLines.push('Reused the exact Windows installer, portable GUI and CLI payloads exercised by the Windows VM gate.')
   return {
+    [portableName]: exactArtifactProof({
+      artifactPath: portablePath,
+      platform: 'windows',
+      gateReceiptPath: installerReceiptPath,
+      payloads: portablePayloads,
+    }),
     [installerName]: exactArtifactProof({
       artifactPath: installerPath,
       platform: 'windows',

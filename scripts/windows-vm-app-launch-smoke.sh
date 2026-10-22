@@ -120,14 +120,17 @@ Get-CimInstance Win32_Process -Filter \"Name = 'nvpn.exe'\" |
     [IO.Path]::GetFullPath(\$_.ExecutablePath).StartsWith(\$targetPrefix, [StringComparison]::OrdinalIgnoreCase)
   } |
   ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction Stop }
-Get-Process -Name NostrVpn.Windows -ErrorAction SilentlyContinue |
-  Stop-Process -Force -ErrorAction Stop
+\$ownedGui = Join-Path '$GUEST_REPO' 'windows\\NostrVpn.Windows\\bin\\Release\\net8.0-windows\\win-x64\\publish\\NostrVpn.Windows.exe'
+Get-CimInstance Win32_Process -Filter \"Name = 'NostrVpn.Windows.exe'\" |
+  Where-Object { \$_.ExecutablePath -and [IO.Path]::GetFullPath(\$_.ExecutablePath) -ieq \$ownedGui } |
+  ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction Stop }
 \$installer = Join-Path '$REMOTE_GATE_DIR' 'nostr-vpn-$SMOKE_TAG-windows-x64-setup.exe'
 Remove-Item -Force \$installer -ErrorAction SilentlyContinue
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\windows-build.ps1 -Configuration Release -Installer -Tag '$SMOKE_TAG' -OutputDir '$REMOTE_GATE_DIR'
 if (\$LASTEXITCODE -ne 0) { throw ('windows-build.ps1 failed with exit code {0}' -f \$LASTEXITCODE) }
 if (!(Test-Path \$installer)) { throw ('Windows installer was not created: {0}' -f \$installer) }
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\windows-installer-smoke.ps1 -InstallerPath \$installer -ArtifactRoot (Join-Path '$REMOTE_GATE_DIR' 'smoke')
+\$publish = Join-Path '$GUEST_REPO' 'windows\\NostrVpn.Windows\\bin\\Release\\net8.0-windows\\win-x64\\publish'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\windows-installer-smoke.ps1 -InstallerPath \$installer -ArtifactRoot (Join-Path '$REMOTE_GATE_DIR' 'smoke') -PublishDir \$publish
 if (\$LASTEXITCODE -ne 0) { throw ('windows-installer-smoke.ps1 failed with exit code {0}' -f \$LASTEXITCODE) }
 \$candidate = Join-Path \$env:CARGO_TARGET_DIR 'release\\nvpn.exe'
 \$embeddedFips = (& \$candidate version --verbose | Out-String)
@@ -200,6 +203,17 @@ try {
 } finally {
   \$zip.Dispose()
 }
+# Build the portable GUI from the complete installed payload, then launch the
+# extracted archive. This gate requires an exclusively reserved Windows VM.
+\$guiArchive = Join-Path '$REMOTE_GATE_DIR' 'nostr-vpn-$SMOKE_TAG-windows-x64.zip'
+powershell.exe -NoProfile -File .\\scripts\\windows-portable-package.ps1 -PublishDir \$publish -ArchivePath \$guiArchive -InstalledManifestPath (Join-Path '$REMOTE_GATE_DIR' 'smoke\\installed-files.json')
+if (\$LASTEXITCODE -ne 0) { throw 'Windows portable packaging failed' }
+\$portableDir = Join-Path '$REMOTE_GATE_DIR' 'portable'
+[IO.Compression.ZipFile]::ExtractToDirectory(\$guiArchive, \$portableDir)
+powershell.exe -NoProfile -File .\\scripts\\windows-app-launch-smoke.ps1 -AppExe (Join-Path \$portableDir 'NostrVpn.Windows.exe') -ArtifactRoot (Join-Path '$REMOTE_GATE_DIR' 'portable-smoke') -NoWindowRequired
+if (\$LASTEXITCODE -ne 0) { throw 'Windows portable launch failed' }
+\$portableSmoke = Join-Path '$REMOTE_GATE_DIR' 'portable-smoke\\windows-app-launch-smoke.json'
+if ((Get-Content -Raw -LiteralPath \$portableSmoke | ConvertFrom-Json).ok -ne \$true) { throw 'Windows portable launch receipt failed' }
 \$receipt = [ordered]@{
   receiptSchema = 2
   platform = 'windows'
@@ -217,6 +231,14 @@ try {
   installedAppStayedAlive = \$true
   smokeReceiptSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath \$smokePath).Hash.ToLowerInvariant()
   payloads = \$payloads
+  portable = [ordered]@{
+    name = (Split-Path -Leaf \$guiArchive)
+    sha256 = (Get-FileHash -LiteralPath \$guiArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    size = (Get-Item -LiteralPath \$guiArchive).Length
+    launched = \$true
+    smokeReceiptSha256 = (Get-FileHash -LiteralPath \$portableSmoke -Algorithm SHA256).Hash.ToLowerInvariant()
+    files = (Get-Content -Raw -LiteralPath (Join-Path '$REMOTE_GATE_DIR' 'nostr-vpn-$SMOKE_TAG-windows-x64.zip.files.json') | ConvertFrom-Json)
+  }
   builtOnWindowsVm = \$true
   builtOnHostMac = \$false
 }
@@ -236,6 +258,9 @@ remote_gate_posix="${REMOTE_GATE_DIR//\\//}"
 "${SCP_CMD[@]}" \
   "$SSH_HOST:$remote_gate_posix/nvpn-$SMOKE_TAG-x86_64-pc-windows-msvc.zip" \
   "$LOCAL_GATE_DIR/nvpn-$SMOKE_TAG-x86_64-pc-windows-msvc.zip"
+"${SCP_CMD[@]}" \
+  "$SSH_HOST:$remote_gate_posix/nostr-vpn-$SMOKE_TAG-windows-x64.zip" \
+  "$LOCAL_GATE_DIR/nostr-vpn-$SMOKE_TAG-windows-x64.zip"
 python3 - \
   "$LOCAL_GATE_DIR/installer-receipt.json" \
   "$LOCAL_GATE_DIR/nostr-vpn-$SMOKE_TAG-windows-x64-setup.exe" \

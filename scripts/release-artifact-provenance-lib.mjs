@@ -124,6 +124,7 @@ function releaseAssetPlatform(path) {
   }
   if (
     /-windows-x64-setup\.exe$/.test(name)
+    || /-windows-x64\.zip$/.test(name)
     || /-x86_64-pc-windows-msvc\.zip$/.test(name)
   ) {
     return 'windows'

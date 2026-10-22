@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
@@ -9,10 +10,7 @@ fn main() {
         return;
     }
 
-    let Ok(source) = find_wintun_dll() else {
-        println!("cargo:warning=failed to locate wintun.dll in cargo registry source");
-        return;
-    };
+    let source = find_wintun_dll().unwrap_or_else(|error| panic!("{error}"));
 
     println!("cargo:rerun-if-changed={}", source.display());
 
@@ -74,13 +72,22 @@ fn find_wintun_dll() -> Result<PathBuf, String> {
         )
     })?;
 
+    // Digests from the Cargo.lock-authenticated wintun 0.5.1 crate. Never
+    // select a similarly named crate or a different cached dependency version.
+    let expected = match arch_dir {
+        "amd64" => "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+        "x86" => "d694fa46ab4cfebcb2632d094c7aa97278eef2f8052438621766d863ae98a931",
+        "arm" => "daad267411ecdc70a0535e274d2c3e9da3d0084bdac7662cb8424dd4a031b4d9",
+        "arm64" => "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+        _ => unreachable!(),
+    };
     for registry in registries {
         let registry = registry.map_err(|error| error.to_string())?;
         let packages = fs::read_dir(registry.path()).map_err(|error| error.to_string())?;
         for package in packages {
             let package = package.map_err(|error| error.to_string())?;
             let name = package.file_name();
-            if !name.to_string_lossy().starts_with("wintun-") {
+            if name != OsStr::new("wintun-0.5.1") {
                 continue;
             }
 
@@ -91,6 +98,10 @@ fn find_wintun_dll() -> Result<PathBuf, String> {
                 .join(arch_dir)
                 .join("wintun.dll");
             if candidate.is_file() {
+                let bytes = fs::read(&candidate).map_err(|error| error.to_string())?;
+                if format!("{:x}", Sha256::digest(&bytes)) != expected {
+                    return Err("wintun 0.5.1 DLL does not match its reviewed content hash".into());
+                }
                 return Ok(candidate);
             }
         }

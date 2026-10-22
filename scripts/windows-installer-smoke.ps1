@@ -2,6 +2,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$InstallerPath,
   [string]$InstallDir,
+  [string]$PublishDir,
   [string]$ArtifactRoot
 )
 
@@ -24,8 +25,10 @@ if (!(Test-Path $InstallerPath)) {
 }
 
 New-Item -ItemType Directory -Force -Path $ArtifactRoot | Out-Null
-Get-Process -Name NostrVpn.Windows -ErrorAction SilentlyContinue |
-  Stop-Process -Force -ErrorAction SilentlyContinue
+$ownedExe = Join-Path $InstallDir 'NostrVpn.Windows.exe'
+Get-CimInstance Win32_Process -Filter "Name = 'NostrVpn.Windows.exe'" |
+  Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath) -ieq $ownedExe } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop }
 Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue
 
 try {
@@ -74,6 +77,21 @@ try {
       ).Hash.ToLowerInvariant()
       size = (Get-Item -LiteralPath $entry.Value.Path).Length
     }
+  }
+  if ($PublishDir) {
+    $installedFiles = [ordered]@{}
+    $publishRoot = [IO.Path]::GetFullPath($PublishDir)
+    foreach ($file in Get-ChildItem -LiteralPath $publishRoot -File -Recurse -Force) {
+      $name = $file.FullName.Substring($publishRoot.Length + 1).Replace([char]92, [char]47)
+      $installed = Join-Path $InstallDir $name
+      if (!(Test-Path -LiteralPath $installed -PathType Leaf)) { throw "Installed payload is missing $name" }
+      $hash = (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash.ToLowerInvariant()
+      if ($hash -ne (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()) {
+        throw "Installed payload differs from publish directory: $name"
+      }
+      $installedFiles[$name] = [ordered]@{ sha256 = $hash; size = (Get-Item -LiteralPath $installed).Length }
+    }
+    $installedFiles | ConvertTo-Json -Depth 4 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $ArtifactRoot 'installed-files.json')
   }
   $smokePath = Join-Path $ArtifactRoot 'windows-app-launch-smoke.json'
   $smokeResult = Get-Content -Raw -LiteralPath $smokePath | ConvertFrom-Json

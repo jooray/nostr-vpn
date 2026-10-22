@@ -43,6 +43,7 @@ const assetNames = [
   `nostr-vpn-${tag}-startos-aarch64.s9pk`,
   `nostr-vpn-${tag}-startos-x86_64.s9pk`,
   `nostr-vpn-${tag}-windows-x64-setup.exe`,
+  `nostr-vpn-${tag}-windows-x64.zip`,
 ]
 
 function canonicalJson(value) {

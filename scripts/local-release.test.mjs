@@ -1239,6 +1239,7 @@ test('staged draft publication publishes only the already validated bytes', () =
   for (const name of [
     'local-release.mjs',
     'local-release-lib.mjs',
+    'windows-portable-release.mjs',
     'release-source-verification.mjs',
     'release-artifact-provenance-lib.mjs',
     'release-gate-resume.mjs',
@@ -1291,6 +1292,7 @@ test('staged draft publication publishes only the already validated bytes', () =
     'nostr-vpn-v4.1.5-startos-aarch64.s9pk',
     'nostr-vpn-v4.1.5-startos-x86_64.s9pk',
     'nostr-vpn-v4.1.5-windows-x64-setup.exe',
+    'nostr-vpn-v4.1.5-windows-x64.zip',
   ]
   const assetPaths = assetNames.map((name) => {
     const path = join(assetsDir, name)
@@ -1956,7 +1958,7 @@ test('validateReleaseAssetSet can require complete app release artifacts', () =>
         'nostr-vpn-v4.0.1-macos-arm64.app.tar.gz',
         'nostr-vpn-v4.0.1-macos-arm64.dmg',
       ], { requireCompleteAppRelease: true }),
-    /Linux x64 desktop package, Linux x64 CLI, Linux ARM64 CLI, Windows x64 installer/,
+    /Linux x64 desktop package, Linux x64 CLI, Linux ARM64 CLI, Windows x64 portable app, Windows x64 installer/,
   )
 
   assert.doesNotThrow(() =>
@@ -1971,6 +1973,7 @@ test('validateReleaseAssetSet can require complete app release artifacts', () =>
       'nostr-vpn-v4.0.1-startos-aarch64.s9pk',
       'nostr-vpn-v4.0.1-startos-x86_64.s9pk',
       'nostr-vpn-v4.0.1-windows-x64-setup.exe',
+    'nostr-vpn-v4.0.1-windows-x64.zip',
     ], { requireCompleteAppRelease: true }),
   )
   assert.throws(
@@ -1999,7 +2002,7 @@ test('draft promotion rejects an incomplete cross-platform artifact set', () => 
           { path: 'assets/nostr-vpn-v4.1.4-macos-arm64.dmg' },
         ],
       }),
-    /Linux x64 desktop package, Linux x64 CLI, Linux ARM64 CLI, Windows x64 installer/,
+    /Linux x64 desktop package, Linux x64 CLI, Linux ARM64 CLI, Windows x64 portable app, Windows x64 installer/,
   )
 
   const completeAssets = [
@@ -2016,6 +2019,7 @@ test('draft promotion rejects an incomplete cross-platform artifact set', () => 
     { path: 'assets/nostr-vpn-v4.1.4-startos-aarch64.s9pk', size: 1 },
     { path: 'assets/nostr-vpn-v4.1.4-startos-x86_64.s9pk', size: 1 },
     { path: 'assets/nostr-vpn-v4.1.4-windows-x64-setup.exe', size: 1 },
+    { path: 'assets/nostr-vpn-v4.1.4-windows-x64.zip', size: 1 },
   ].map((asset, index) => ({
     sha256: String(index + 1).padStart(64, '0'),
     ...asset,

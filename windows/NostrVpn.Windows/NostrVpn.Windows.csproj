@@ -10,6 +10,9 @@
     <AssemblyName>NostrVpn.Windows</AssemblyName>
     <RootNamespace>NostrVpn.Windows</RootNamespace>
     <ApplicationIcon>Assets\nostr-vpn.ico</ApplicationIcon>
+    <RuntimeFrameworkVersion>8.0.26</RuntimeFrameworkVersion>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode>true</RestoreLockedMode>
     <Version>4.1.19</Version>
     <NvpnCargoArtifactsDir Condition="'$(NvpnCargoArtifactsDir)' == ''">..\..\target\$(Configuration)</NvpnCargoArtifactsDir>
   </PropertyGroup>

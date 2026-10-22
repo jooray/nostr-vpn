@@ -3,6 +3,7 @@ param(
   [string]$Configuration = "Debug",
   [switch]$Run,
   [switch]$Publish,
+  [switch]$SelfContained,
   [switch]$Installer,
   [switch]$DaemonOnly,
   [string]$Tag,
@@ -11,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "windows-build-inputs.ps1")
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Project = Join-Path $Root "windows\NostrVpn.Windows\NostrVpn.Windows.csproj"
 $CargoTargetRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $Root "target" }
@@ -214,6 +216,12 @@ try {
   Enable-DeterministicBuildEnv
   Prepare-LocalFipsPatch
 
+  if (!$DaemonOnly) {
+    $PublishSelfContained = if ($Installer -or $SelfContained) { "true" } else { "false" }
+    Invoke-Checked dotnet @("restore", $Project, "--locked-mode", "-r", $Runtime, "-p:SelfContained=$PublishSelfContained")
+    Assert-PinnedDownloadPackages -AssetsPath (Join-Path (Split-Path $Project) "obj/project.assets.json") -PinsPath (Join-Path (Split-Path $Project) "sdk-packages.json")
+  }
+
   $CargoArgs = @()
   $CargoArgs += $CargoConfigArgs
   $CargoArgs += @("build")
@@ -244,11 +252,11 @@ try {
   Copy-RequiredFile (Join-Path $CargoOutputDir "wintun.dll") (Join-Path $AppBinariesDir "wintun.dll") "wintun.dll"
 
   if ($Publish -or $Installer) {
-    $SelfContained = if ($Installer) { "true" } else { "false" }
-    Invoke-Checked dotnet @("publish", $Project, "-c", $Configuration, "-r", $Runtime, "--self-contained", $SelfContained, "-p:Deterministic=true", "-p:ContinuousIntegrationBuild=true", "-p:NvpnCargoArtifactsDir=$AppCargoDir")
+    $PublishSelfContained = if ($Installer -or $SelfContained) { "true" } else { "false" }
+    Invoke-Checked dotnet @("publish", $Project, "--no-restore", "-c", $Configuration, "-r", $Runtime, "--self-contained", $PublishSelfContained, "-p:Deterministic=true", "-p:ContinuousIntegrationBuild=true", "-p:NvpnCargoArtifactsDir=$AppCargoDir")
     $DotnetOutputDir = Join-Path $Root "windows\NostrVpn.Windows\bin\$Configuration\net8.0-windows\$Runtime\publish"
   } else {
-    Invoke-Checked dotnet @("build", $Project, "-c", $Configuration, "-p:Deterministic=true", "-p:ContinuousIntegrationBuild=true", "-p:NvpnCargoArtifactsDir=$AppCargoDir")
+    Invoke-Checked dotnet @("build", $Project, "--no-restore", "-c", $Configuration, "-p:Deterministic=true", "-p:ContinuousIntegrationBuild=true", "-p:NvpnCargoArtifactsDir=$AppCargoDir")
     $DotnetOutputDir = Join-Path $Root "windows\NostrVpn.Windows\bin\$Configuration\net8.0-windows"
   }
   Assert-BundledWindowsHelpers $DotnetOutputDir
@@ -288,7 +296,7 @@ try {
   }
 
   if ($Run) {
-    $exe = Join-Path $Root "windows\NostrVpn.Windows\bin\$Configuration\net8.0-windows\NostrVpn.Windows.exe"
+    $exe = Join-Path $DotnetOutputDir "NostrVpn.Windows.exe"
     if (!(Test-Path $exe)) {
       throw "Built Windows app not found: $exe"
     }
