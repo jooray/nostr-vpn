@@ -102,7 +102,7 @@ if "windows-installer-migrate.tests.ps1" not in windows_smoke:
 for value in (
     "installedPayloads",
     "nostr_vpn_app_core.dll",
-    "Get-FileHash -Algorithm SHA256",
+    "Get-NvpnFileHash -Algorithm SHA256",
 ):
     if value not in installer_smoke:
         raise SystemExit(f"installer smoke does not receipt installed payload: {value}")

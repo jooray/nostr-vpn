@@ -6,7 +6,10 @@
         MobileTunnelConfig::from_data_dir(data_dir).expect("initialize missing config");
         let original = std::fs::read(&path).expect("created config");
         let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1);
-        std::fs::File::open(&path)
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
             .expect("config file")
             .set_times(std::fs::FileTimes::new().set_modified(old))
             .expect("fixed modification time");
