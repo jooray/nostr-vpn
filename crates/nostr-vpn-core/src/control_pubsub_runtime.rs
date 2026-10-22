@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(not(target_os = "macos"))]
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::config::{NostrPubsubConfig, NostrPubsubMode};
@@ -20,8 +20,8 @@ use fips_core::FipsEndpoint;
 #[cfg(feature = "updater")]
 use nostr_pubsub::MatchEventOptions;
 use nostr_pubsub::{
-    EventBus, EventSource, MeshPeerPolicy, NostrEventSubscriber, NostrEventSubscription,
-    NostrPubsubRouter, PolicyDecision, QueryEvent, RouterPublishSource, SourceRoute, VerifiedEvent,
+    EventBus, EventSource, MeshPeerPolicy, NostrEventSubscription, NostrPubsubRouter,
+    PolicyDecision, QueryEvent, RouterPublishSource, SourceRoute, VerifiedEvent,
 };
 use nostr_pubsub_fips::{
     FipsPubsubClient, FipsPubsubClientOptions, FipsPubsubPolicy, FipsPubsubPolicyOptions,
@@ -31,7 +31,7 @@ use nostr_pubsub_relay::RelayEventBus;
 use nostr_pubsub_social_graph::{PEER_RATING_MAX_AGE, PEER_RATING_MAX_FUTURE_SKEW};
 #[cfg(test)]
 use nostr_sdk::prelude::Keys;
-use nostr_sdk::prelude::{Client, Event, Filter, Kind, PublicKey};
+use nostr_sdk::prelude::{Client, Event, EventId, Filter, Kind, PublicKey};
 use nostr_social_memory::rating_from_event;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, mpsc, oneshot};
@@ -962,7 +962,13 @@ async fn relay_notification(relay: &mut Option<RelayProvider>) -> Option<QueryEv
     let Some(relay) = relay.as_mut() else {
         return std::future::pending().await;
     };
-    relay.notifications.recv().await
+    let delivery = relay.notifications.recv().await?;
+    relay
+        .queued_events
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .remove(&(delivery.event.as_event().id, delivery.source.clone()));
+    Some(delivery)
 }
 
 include!("control_pubsub_runtime/outbox.rs");

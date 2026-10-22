@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Recover retained Nostr relay updates after incoming bursts fill the queue,
+  and avoid queueing duplicate updates from the same relay.
 - Update FIPS and peer messaging dependencies to recover Bluetooth reconnects
   after address reuse, retain WebRTC connection cleanup and consent fixes, and
   harden handshake replies and DNS query handling.
