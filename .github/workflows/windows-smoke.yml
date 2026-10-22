@@ -18,6 +18,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
 
 jobs:
   build-inputs:
@@ -52,6 +53,7 @@ jobs:
   windows-smoke:
     if: ${{ !inputs.restore_only }}
     name: Windows app smoke
+    timeout-minutes: 60
     runs-on: windows-latest
     permissions:
       contents: read
@@ -70,57 +72,52 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 8.0.420
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
         with:
           cache-bin: false
 
-      - name: Run Rust tests
-        run: cargo test --workspace
-
-      - name: Build CLI release binary
-        run: cargo build --release -p nvpn
+      - name: Verify production PowerShell build inputs before compiling
+        run: |
+          Set-Content global.json '{"sdk":{"version":"8.0.420","rollForward":"disable"}}'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-build-inputs.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell input checks failed' }
 
       - name: Install Windows native package dependencies
         run: choco install llvm innosetup -y --no-progress
 
+      - name: Run Rust tests
+        run: cargo test --workspace --locked
+
+      - name: Build CLI release binary
+        run: cargo build --release -p nvpn --locked
+
       - name: Build Windows installer
         env:
           NVPN_WINDOWS_LLVM_BIN: C:\Program Files\LLVM\bin
-        run: .\scripts\windows-build.ps1 -Configuration Release -Installer -Tag v0.0.0 -OutputDir dist
+        run: .\scripts\windows-build.ps1 -Configuration Release -Installer -OutputDir dist
 
-      - name: Smoke launch installed Windows app
-        run: .\scripts\windows-installer-smoke.ps1 -InstallerPath dist\nostr-vpn-v0.0.0-windows-x64-setup.exe -ArtifactRoot artifacts
-
-      - name: Package smoke artifacts
+      - name: Smoke launch installed and portable Windows apps
+        env:
+          NVPN_APP_DATA_DIR: ${{ runner.temp }}\nvpn-haps-profile
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $publish = 'windows/NostrVpn.Windows/bin/Release/net8.0-windows/win-x64/publish'
+          $installers = @(Get-ChildItem dist/nostr-vpn-*-windows-x64-setup.exe)
+          if ($installers.Count -ne 1) { throw 'Expected one source-bound Windows installer' }
+          ./scripts/windows-installer-smoke.ps1 -InstallerPath $installers[0].FullName -ArtifactRoot artifacts/installed -PublishDir $publish
+          ./scripts/windows-portable-smoke.ps1 -PublishDir $publish -InstallerPath $installers[0].FullName -InstalledManifestPath artifacts/installed/installed-files.json -ArtifactRoot artifacts/portable
 
-          $files = @(
-            "target/release/nvpn.exe",
-            "dist/nostr-vpn-v0.0.0-windows-x64-setup.exe",
-            "artifacts/windows-app-launch-smoke.json"
-          )
-
-          foreach ($file in $files) {
-            if (-not (Test-Path $file)) {
-              throw "Expected build output not found: $file"
-            }
-            $source = Resolve-Path $file
-            $dist = Resolve-Path dist
-            if ((Split-Path -Parent $source) -ne $dist) {
-              Copy-Item $source dist/
-            }
-          }
-
-          Compress-Archive -Path dist/* -DestinationPath artifacts/windows-smoke.zip -Force
+      - name: Retain source-bound Windows artifacts
+        run: |
+          Copy-Item dist/nostr-vpn-*-windows-x64-setup.exe artifacts/portable/
+          Compress-Archive -Path @('artifacts/portable/*.zip', 'artifacts/portable/*.json', 'artifacts/portable/*.exe', 'artifacts/portable/launch') -DestinationPath artifacts/windows-smoke.zip
 
       - name: Upload smoke artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-smoke
+          name: windows-smoke-${{ github.sha }}
           path: artifacts/windows-smoke.zip
+          if-no-files-found: error
           retention-days: 7
