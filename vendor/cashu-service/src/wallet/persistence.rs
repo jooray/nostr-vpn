@@ -73,7 +73,7 @@ pub(crate) fn acquire_wallet_writer_lock(data_dir: &Path) -> Result<File> {
         .open(&lock_path)
         .with_context(|| format!("failed to open Cashu wallet lock {}", lock_path.display()))?;
     FileExt::try_lock_exclusive(&lock).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::WouldBlock {
+        if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() {
             anyhow::anyhow!(
                 "the Cashu wallet at {} is already in use by another process",
                 cashu_wallet_dir(data_dir).display()

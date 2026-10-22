@@ -11,7 +11,14 @@ struct FixturePolicy {
 
 impl HostNetwork for FixturePolicy {
     fn protect_socket(&self, socket: &socket2::SockRef<'_>) -> io::Result<()> {
+        #[cfg(not(target_os = "windows"))]
         assert_eq!(socket.local_addr()?.as_socket().unwrap().port(), 0);
+        // Winsock rejects getsockname on a socket that has not been bound yet.
+        #[cfg(target_os = "windows")]
+        assert_eq!(
+            socket.local_addr().expect_err("socket must still be unbound").raw_os_error(),
+            Some(windows_sys::Win32::Networking::WinSock::WSAEINVAL),
+        );
         self.protected.fetch_add(1, Ordering::SeqCst);
         if self.denied {
             Err(io::Error::new(io::ErrorKind::PermissionDenied, "denied"))

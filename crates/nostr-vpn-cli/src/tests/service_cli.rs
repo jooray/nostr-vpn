@@ -588,6 +588,7 @@ fn windows_apply_config_uses_installed_enabled_service() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
 fn linux_egress_guard_precedes_networking_and_has_no_release_on_stop() {
     let unit = crate::service_management::linux_guard_service_unit_content(
         Path::new("/usr/local/bin/nvpn"),
