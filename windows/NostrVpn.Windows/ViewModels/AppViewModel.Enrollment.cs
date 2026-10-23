@@ -148,16 +148,16 @@ public sealed partial class AppViewModel
         var added = await DispatchAsync(
             NativeActions.AddParticipant(network.Id, participant, alias.Length == 0 ? null : alias),
             "Adding device");
+        CompleteParticipantSubmission(added, network.Id, participant, alias);
+    }
+
+    private void CompleteParticipantSubmission(bool added, string networkId, string participant, string alias)
+    {
         if (!added)
         {
             return;
         }
         BeginJoinCoordinationRefresh();
-        CompleteParticipantSubmission(network.Id, participant, alias);
-    }
-
-    private void CompleteParticipantSubmission(string networkId, string participant, string alias)
-    {
         var network = ActiveNetwork;
         if (Page != AppPage.AddDevice || network is null || network.Id != networkId
             || ParticipantInput.Trim() != participant || ParticipantAliasInput.Trim() != alias)

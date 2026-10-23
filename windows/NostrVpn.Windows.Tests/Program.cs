@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Windows.Threading;
 using NostrVpn.Windows.Core;
 using NostrVpn.Windows.ViewModels;
 
@@ -30,6 +31,14 @@ internal static class Program
         Require(immediate.Page == AppPage.Devices && immediate.Notice == "Device added", "immediate acceptance");
         Pass("immediate acceptance");
 
+        var failed = Create(accepted: false);
+        Complete(failed, added: false);
+        Require(failed.Page == AppPage.AddDevice && failed.ParticipantInput == Participant
+            && failed.ParticipantAliasInput == "alias" && failed.Notice == "", "failed submission preserves form");
+        var timer = (DispatcherTimer)typeof(AppViewModel).GetField("_refreshTimer", Private)!.GetValue(failed)!;
+        Require(timer.Interval == TimeSpan.FromSeconds(15), "failed submission does not start coordination refresh");
+        Pass("failed submission");
+
         Preserve("navigation during dispatch", model => model.Page = AppPage.Settings);
         Preserve("network selection during dispatch", model => Set(model, "_shownNetworkId", "other-network"));
         Preserve("participant edit during dispatch", model => model.ParticipantInput = "different-participant");
@@ -52,6 +61,7 @@ internal static class Program
         // Exercise the real view model without starting its native core, timers,
         // update checks, or user startup-registration side effects.
         var model = (AppViewModel)RuntimeHelpers.GetUninitializedObject(typeof(AppViewModel));
+        Set(model, "_refreshTimer", new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) });
         Set(model, "_state", State(accepted));
         Set(model, "_page", AppPage.AddDevice);
         Set(model, "_shownNetworkId", "network");
@@ -61,8 +71,8 @@ internal static class Program
         return model;
     }
 
-    private static void Complete(AppViewModel model) => typeof(AppViewModel)
-        .GetMethod("CompleteParticipantSubmission", Private)!.Invoke(model, ["network", Participant, "alias"]);
+    private static void Complete(AppViewModel model, bool added = true) => typeof(AppViewModel)
+        .GetMethod("CompleteParticipantSubmission", Private)!.Invoke(model, [added, "network", Participant, "alias"]);
 
     private static void Preserve(string label, Action<AppViewModel> change)
     {
