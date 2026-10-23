@@ -542,6 +542,47 @@ async fn mobile_ping_peers(
     if participants.is_empty() {
         return Ok(0);
     }
+    // Mobile disables permanent FIPS auto-reconnect. A datagram cannot re-arm
+    // an exhausted path, so retry it at the existing offline discovery cadence.
+    let links = endpoint.peers().await?;
+    let refresh = {
+        let identities = peer_identities
+            .read()
+            .map_err(|_| anyhow!("mobile FIPS identity lock poisoned"))?;
+        let mut presence = presence
+            .write()
+            .map_err(|_| anyhow!("mobile FIPS presence lock poisoned"))?;
+        participants
+            .iter()
+            .filter_map(|participant| {
+                let identity = identities.identity_for_participant(participant)?;
+                let peer = presence.entry(participant.clone()).or_default();
+                if peer.last_seen_at.is_some_and(|seen| {
+                    mobile_timestamp_within_grace(now, seen, MOBILE_PEER_ONLINE_GRACE_SECS)
+                }) || peer.last_path_refresh_attempt_at.is_some_and(|attempt| {
+                    !mobile_elapsed_at_least(
+                        now,
+                        attempt,
+                        MOBILE_PEER_DISCOVERY_PROBE_INTERVAL_SECS,
+                    )
+                }) || links.iter().any(|link| {
+                    link.node_addr == *identity.node_addr()
+                        && (link.connected || link.direct_probe_pending)
+                }) {
+                    return None;
+                }
+                // Also throttle unsuccessful attempts, including transit peers
+                // whose ordinary keepalive Pings remain on the faster cadence.
+                peer.last_path_refresh_attempt_at = Some(now);
+                Some(identity)
+            })
+            .collect::<Vec<_>>()
+    };
+    if !refresh.is_empty()
+        && let Err(error) = endpoint.refresh_peer_paths(refresh).await
+    {
+        tracing::warn!(?error, "mobile: failed to refresh exhausted peer paths");
+    }
     let frame = FipsControlFrame::Ping {
         network_id: network_id.to_string(),
         sent_at: now,
