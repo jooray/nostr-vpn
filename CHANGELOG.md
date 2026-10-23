@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## 4.1.19 - 2026-10-22
+## 4.1.19 - 2026-10-23
 
 ### Improved
 
@@ -12,6 +12,11 @@ All notable changes to this project are documented in this file.
 
 - Recover retained Nostr relay updates after incoming bursts fill the queue,
   and avoid queueing duplicate updates from the same relay.
+- Retry exhausted mobile peer connections on bounded discovery probes while
+  preserving healthy connections and pending retries.
+- Handle Windows storage-lock contention and safely finish network cleanup
+  after its configuration directory has already been removed.
+- Remove mobile Internet-sharing controls that the mobile apps do not support.
 - Update FIPS and peer messaging dependencies to recover Bluetooth reconnects
   after address reuse, retain WebRTC connection cleanup and consent fixes, and
   harden handshake replies and DNS query handling.
