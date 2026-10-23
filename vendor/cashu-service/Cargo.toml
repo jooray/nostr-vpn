@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "nvpn-cashu-service"
-version = "0.4.9"
+version = "0.4.10"
 authors = ["Martti Malmi"]
 build = false
 autolib = false

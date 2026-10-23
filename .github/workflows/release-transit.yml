@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       lane:
-        description: Hosted app checks, FIPS checks, or both
+        description: Hosted app checks, package preflight, FIPS checks, or both
         type: choice
         default: both
-        options: [both, hosted, fips, ingress]
+        options: [both, hosted, fips, ingress, package]
       app_commit:
         description: Exact application commit
         type: string
@@ -34,7 +34,7 @@ env:
 
 jobs:
   hosted:
-    if: inputs.lane == 'both' || inputs.lane == 'hosted'
+    if: inputs.lane == 'both' || inputs.lane == 'hosted' || inputs.lane == 'package'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     env:
@@ -90,12 +90,20 @@ jobs:
           cp "$CARGO_HOME/audit.toml" artifacts/hosted-4119/reviewed-audit-policy.toml
           sha256sum "$CARGO_HOME/audit.toml" >> artifacts/hosted-4119/inputs.txt
       - name: Run canonical hosted release gate
+        if: inputs.lane != 'package'
         shell: bash
         env:
           NVPN_RELEASE_GATE_LOG_DIR: ${{ github.workspace }}/artifacts/hosted-4119/gate
         run: |
           set -euo pipefail
           ./scripts/release-gate.sh --hosted 2>&1 | tee artifacts/hosted-4119/hosted.log
+      - name: Verify packages before native release builds
+        if: inputs.lane == 'package'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/publish.sh --dry-run 2>&1 | tee artifacts/hosted-4119/package.log
+          sha256sum target/package/nvpn-cashu-service-0.4.10.crate > artifacts/hosted-4119/package-sha256.txt
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -106,6 +114,7 @@ jobs:
             artifacts/web-startos-manual-join
             artifacts/umbrel-web
             artifacts/umbrel-auth-join
+            target/package/nvpn-cashu-service-0.4.10.crate
           retention-days: 14
           if-no-files-found: error
 
