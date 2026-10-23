@@ -68,8 +68,14 @@ jobs:
         env:
           NVPN_WINDOWS_LLVM_BIN: C:\Program Files\LLVM\bin
         run: |
-          cargo build --release -p nvpn --locked 2>&1 | Tee-Object artifacts/preparation/cli-build.log
-          if ($LASTEXITCODE) { throw 'CLI build failed' }
+          # MSVC initializes Platform=x64; the project uses the normal AnyCPU
+          # output layout with an explicit win-x64 runtime. Validate it first.
+          Remove-Item Env:Platform -ErrorAction SilentlyContinue
+          $project = 'windows/NostrVpn.Windows/NostrVpn.Windows.csproj'
+          $publishDir = (dotnet msbuild $project -nologo -p:Configuration=Release -p:RuntimeIdentifier=win-x64 -getProperty:PublishDir | Out-String).Trim()
+          if ($LASTEXITCODE -or $publishDir.Replace('/', '\').TrimEnd('\') -ne 'bin\Release\net8.0-windows\win-x64\publish') { throw "Unexpected publish directory: $publishDir" }
+          # The established wrapper builds both nvpn and app-core together.
+          # A separate nvpn-only invocation changes feature unification twice.
           ./scripts/windows-build.ps1 -Configuration Release -Installer -OutputDir dist 2>&1 | Tee-Object artifacts/preparation/installer-build.log
           if ($LASTEXITCODE) { throw 'Windows installer build failed' }
           if ((git status --porcelain | Out-String).Trim()) { throw 'Shipping build changed source' }
