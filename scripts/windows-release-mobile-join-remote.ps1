@@ -132,6 +132,17 @@ function Normalize-ComparableWindowsPath {
   return [IO.Path]::GetFullPath($Value).TrimEnd('\')
 }
 
+function Test-OwnedServiceConfig {
+  param([string]$CommandLine, [string]$ExpectedConfig)
+  $match = [regex]::Match($CommandLine, '^"[^"]+" daemon --service --config "(?<config>[^"]+)" --iface "[^"]+" --mesh-refresh-interval-secs [1-9][0-9]*\s*$')
+  if (!$match.Success) { return $false }
+  return [string]::Equals(
+    (Normalize-ComparableWindowsPath $match.Groups['config'].Value),
+    (Normalize-ComparableWindowsPath $ExpectedConfig),
+    [StringComparison]::OrdinalIgnoreCase
+  )
+}
+
 function Assert-SourceAndArtifacts {
   Assert-GitHash $ExpectedAppGitSha "ExpectedAppGitSha"
   Assert-GitHash $ExpectedAppGitTree "ExpectedAppGitTree"
@@ -352,18 +363,9 @@ switch ($Mode) {
         [string]$Service.PathName,
         '^"(?<binary>[^"]+)"(?<arguments> .*)$'
       )
-      $ConfigArgument = [regex]::Match(
-        $Command.Groups['arguments'].Value,
-        '^ daemon --service --config "(?<config>[^"]+)" --iface "(?<iface>[^"]+)" --mesh-refresh-interval-secs (?<refresh>[1-9][0-9]*)\s*$'
-      )
       if (
         !$Command.Success -or
-        !$ConfigArgument.Success -or
-        ![string]::Equals(
-          (Normalize-ComparableWindowsPath $ConfigArgument.Groups['config'].Value),
-          (Normalize-ComparableWindowsPath $Config),
-          [System.StringComparison]::OrdinalIgnoreCase
-        )
+        !(Test-OwnedServiceConfig ([string]$Service.PathName) $Config)
       ) {
         throw "refusing to remove a Windows service outside this candidate profile"
       }
