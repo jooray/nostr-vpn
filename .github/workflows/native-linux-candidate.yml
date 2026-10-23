@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
+          ref: 4dfbc7f9b2f34168c932672b94877effa4034b33
           fetch-depth: 0
       - uses: actions/checkout@v6
         with:
@@ -25,8 +25,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
-          test "$(git rev-parse 'HEAD^{tree}')" = 3f741a01c030be6c4d0b96df3e0df7c71b54ed60
+          test "$(git rev-parse HEAD)" = 4dfbc7f9b2f34168c932672b94877effa4034b33
+          test "$(git rev-parse 'HEAD^{tree}')" = 3c227a4c74ab357a10585214d929079d61b904cb
           test -z "$(git diff --name-only HEAD)"
           test "$(git -C .hosted-fips rev-parse HEAD)" = f98d97e42dfa48d5fed344c43caa9ebd27b01229
           test "$(git -C .hosted-fips rev-parse 'HEAD^{tree}')" = dcb1c6d80de1e28a0f442e30cba8ddadb15dc581
@@ -44,7 +44,7 @@ jobs:
           source=source.replace(old,'[[ "$fips_sha" == f98d97e42dfa48d5fed344c43caa9ebd27b01229 ]]')
           path=pathlib.Path(os.environ['RUNNER_TEMP'])/'final-native-driver.sh'
           path.write_text(source)
-          proof={'shippingSourceChanged':False,'appGitSha':'be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9','appGitTree':'3f741a01c030be6c4d0b96df3e0df7c71b54ed60','fipsGitSha':'f98d97e42dfa48d5fed344c43caa9ebd27b01229','fipsGitTree':'dcb1c6d80de1e28a0f442e30cba8ddadb15dc581','originalDriverSha256':hashlib.sha256(original.encode()).hexdigest(),'executionDriverSha256':hashlib.sha256(source.encode()).hexdigest(),'changes':['external driver root','exact published FIPS 0.4.107 pin']}
+          proof={'shippingSourceChanged':False,'appGitSha':'4dfbc7f9b2f34168c932672b94877effa4034b33','appGitTree':'3c227a4c74ab357a10585214d929079d61b904cb','fipsGitSha':'f98d97e42dfa48d5fed344c43caa9ebd27b01229','fipsGitTree':'dcb1c6d80de1e28a0f442e30cba8ddadb15dc581','originalDriverSha256':hashlib.sha256(original.encode()).hexdigest(),'executionDriverSha256':hashlib.sha256(source.encode()).hexdigest(),'changes':['external driver root','exact published FIPS 0.4.107 pin']}
           (path.parent/'final-native-driver.json').write_text(json.dumps(proof,indent=2)+'\n')
           DRIVER
           bash -n "$RUNNER_TEMP/final-native-driver.sh"
@@ -58,12 +58,12 @@ jobs:
         run: |
           set -euo pipefail
           bash "$RUNNER_TEMP/final-native-driver.sh" "$GITHUB_WORKSPACE/.hosted-fips" "$RUNNER_TEMP/nvpn-linux-candidate" 2>&1 | tee "$RUNNER_TEMP/final-native-build.log"
-          test "$(git rev-parse HEAD)" = be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
+          test "$(git rev-parse HEAD)" = 4dfbc7f9b2f34168c932672b94877effa4034b33
           test -z "$(git diff --name-only HEAD)"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: final-native-linux-be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
+          name: final-native-linux-4dfbc7f9b2f34168c932672b94877effa4034b33
           path: |
             ${{ runner.temp }}/nvpn-linux-candidate
             ${{ runner.temp }}/final-native-build.log
