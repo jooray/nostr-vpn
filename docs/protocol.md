@@ -154,6 +154,11 @@ resolver with literal bootstrap IPs. `through_exit` sends DNS wire messages to
 explicit IP resolvers over the selected exit. Resolver or path failure is
 fail-closed; secure DNS does not fall back to system or plaintext DNS.
 
+For custom DoH, bootstrap IPs must be addresses of the HTTPS DNS server named
+in the URL. They are connection destinations, not recursive DNS servers used
+to look up that hostname. Use the endpoint addresses supplied by that provider;
+the URL hostname is still used for TLS certificate validation.
+
 DoH hides DNS contents from the exit, but the resolver sees the query and the
 exit still sees destination IPs, timing, volume, and sometimes TLS hostnames.
 A WireGuard profile resolver is visible to that WireGuard provider.
