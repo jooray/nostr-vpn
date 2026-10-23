@@ -626,6 +626,9 @@ assert_release_checkout_state \
 receipt_binding_args=(
   ${android_install_binding_args[@]+"${android_install_binding_args[@]}"}
   --desktop-receipt "$DESKTOP_RECEIPT"
+  --windows-source-receipt "$HOST_SOURCE_RECEIPT"
+  --windows-installer-receipt "$HOST_INSTALLER_RECEIPT"
+  --windows-fips-repo "$NVPN_FIPS_REPO_PATH"
   --android-artifact-receipt "$ANDROID_ARTIFACT_RECEIPT"
   --android-install-receipt "$ANDROID_INSTALL_RECEIPT"
   --android-fips-metadata-receipt "$ANDROID_FIPS_METADATA_RECEIPT"

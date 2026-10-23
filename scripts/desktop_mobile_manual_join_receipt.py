@@ -16,6 +16,7 @@ import json
 import os
 import pathlib
 import re
+import subprocess
 import tempfile
 from typing import Any, NoReturn
 
@@ -105,6 +106,7 @@ def validate_desktop_receipt(
     fips_sha: str,
     fips_tree: str,
     fips_version: str,
+    registry_proof: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     label = f"{platform} desktop artifact receipt"
     require_exact(receipt, "schema", 2 if platform == "linux" else 1, label)
@@ -130,8 +132,17 @@ def validate_desktop_receipt(
         if cli.get("shortVersion") != f"nvpn {version}":
             fail(f"{label} CLI version differs from appVersion")
         verbose = cli.get("verboseVersion")
-        if not isinstance(verbose, str) or f"(rev {fips_sha[:10]})" not in verbose:
-            fail(f"{label} CLI does not bind the exact FIPS revision")
+        if registry_proof is None:
+            if not isinstance(verbose, str) or f"(rev {fips_sha[:10]})" not in verbose:
+                fail(f"{label} CLI does not bind the exact FIPS revision")
+        else:
+            require_exact(registry_proof, "cliSha256", cli["sha256"], label)
+            require_exact(registry_proof, "cliSize", cli["size"], label)
+            require_exact(registry_proof, "expectedFipsVersion", fips_version, label)
+            lines = [line.strip() for line in verbose.splitlines()
+                     if line.strip().startswith("fips_core_version:")]
+            if lines != [registry_proof.get("runtimeFipsVersion")]:
+                fail(f"{label} runtime differs from verified registry provenance")
     else:
         mode = receipt.get("builderMode")
         if mode == "local-docker":
@@ -359,6 +370,47 @@ def validate_component_arguments(args: argparse.Namespace) -> None:
             fail(f"{label} is invalid")
 
 
+def validate_windows_registry_binding(
+    args: argparse.Namespace, desktop: dict[str, Any]
+) -> dict[str, Any] | None:
+    paths = [args.windows_source_receipt, args.windows_installer_receipt,
+             args.windows_fips_repo]
+    if not any(paths):
+        return None
+    if args.platform != "windows" or not all(paths):
+        fail("Windows registry provenance requires source, installer and FIPS inputs")
+    load_json(args.windows_source_receipt, "Windows source receipt")
+    installer = load_json(args.windows_installer_receipt, "Windows installer receipt")
+    artifacts = desktop.get("artifacts", {})
+    for name in ("app", "appCore", "cli", "wintun"):
+        actual = require_artifact_entry(artifacts, name, "Windows desktop receipt")
+        expected = installer.get("payloads", {}).get(name, {})
+        for field in ("sha256", "size"):
+            require_exact(actual, field, expected.get(field), f"Windows {name} artifact")
+    cli = artifacts["cli"]
+    verbose = cli.get("verboseVersion")
+    if not isinstance(verbose, str):
+        fail("Windows CLI runtime version is missing")
+    # Recompute the canonical proof from actual locked registry packages and
+    # their .cargo_vcs_info.json; never trust an unvalidated proof JSON alone.
+    with tempfile.TemporaryDirectory(prefix="nvpn-windows-runtime-") as work:
+        runtime = pathlib.Path(work) / "version.txt"
+        runtime.write_text(verbose, encoding="utf-8")
+        command = [
+            "node", str(pathlib.Path(__file__).with_name("release-source-verification.mjs")),
+            "windows-runtime-provenance", str(args.windows_source_receipt),
+            str(args.windows_installer_receipt), args.expected_desktop_app_sha,
+            args.expected_desktop_app_tree, str(args.windows_fips_repo),
+            args.expected_desktop_fips_sha, args.expected_desktop_fips_tree,
+            args.expected_desktop_fips_version, str(runtime), cli["sha256"], str(cli["size"]),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=90)
+    if result.returncode:
+        fail("Windows registry runtime provenance rejected: " + result.stderr.strip())
+    proof = json.loads(result.stdout)
+    return proof
+
+
 def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
     validate_component_arguments(args)
 
@@ -370,6 +422,7 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
         args.android_install_receipt, "Android install receipt"
     )
     phase_source = load_json(args.phase_evidence, "phase evidence")
+    registry_proof = validate_windows_registry_binding(args, desktop_source)
     desktop = validate_desktop_receipt(
         desktop_source,
         args.platform,
@@ -378,7 +431,12 @@ def build_receipt(args: argparse.Namespace) -> dict[str, Any]:
         args.expected_desktop_fips_sha,
         args.expected_desktop_fips_tree,
         args.expected_desktop_fips_version,
+        registry_proof,
     )
+    if registry_proof is not None:
+        desktop["registryProvenance"] = registry_proof
+        desktop["registrySourceReceiptSha256"] = sha256_file(args.windows_source_receipt)
+        desktop["installerReceiptSha256"] = sha256_file(args.windows_installer_receipt)
     desktop["artifactReceiptSha256"] = sha256_file(args.desktop_receipt)
     desktop["artifactReceiptSize"] = args.desktop_receipt.stat().st_size
     android = validate_android_artifact_receipt(
@@ -506,6 +564,9 @@ def validate_android_only(args: argparse.Namespace) -> None:
 
 def add_component_binding_arguments(command: argparse.ArgumentParser) -> None:
     command.add_argument("--desktop-receipt", type=pathlib.Path, required=True)
+    command.add_argument("--windows-source-receipt", type=pathlib.Path)
+    command.add_argument("--windows-installer-receipt", type=pathlib.Path)
+    command.add_argument("--windows-fips-repo", type=pathlib.Path)
     command.add_argument(
         "--android-artifact-receipt", type=pathlib.Path, required=True
     )
