@@ -256,8 +256,6 @@ capture_version_receipts() {
   ssh "${DESKTOP_UNDERLAY_SSH_OPTIONS[@]}" "$HYPERVISOR_SSH" \
     "'$HYPERVISOR_BINARY' version --verbose" \
     >"$ARTIFACT_DIR/peer-version.txt"
-  grep -Fxq "$expected" "$ARTIFACT_DIR/target-version.txt" \
-    || fail "Windows target binary does not report exact FIPS version/revision $EXPECTED_FIPS_VERSION/$EXPECTED_FIPS_REV"
   grep -Fxq "$expected" "$ARTIFACT_DIR/peer-version.txt" \
     || fail "Windows peer binary does not report exact FIPS version/revision $EXPECTED_FIPS_VERSION/$EXPECTED_FIPS_REV"
   target_sha="$(
@@ -275,6 +273,12 @@ capture_version_receipts() {
   [[ "$target_sha" =~ ^[0-9a-f]{64}$ \
     && "$target_size" =~ ^[1-9][0-9]*$ ]] \
     || fail "Windows target binary has no exact byte receipt"
+  node "$ROOT/scripts/release-source-verification.mjs" windows-runtime-provenance \
+    "$HOST_SOURCE_FIPS_RECEIPT" "$HOST_INSTALLER_RECEIPT" \
+    "$ARTIFACT_APP_SHA" "$ARTIFACT_APP_TREE" "$LOCAL_FIPS_REPO" \
+    "$EXPECTED_FIPS_SHA" "$EXPECTED_FIPS_TREE" "$EXPECTED_FIPS_VERSION" \
+    "$ARTIFACT_DIR/target-version.txt" "$target_sha" "$target_size" \
+    >"$ARTIFACT_DIR/runtime-provenance-validation.json"
   python3 - \
     "$ARTIFACT_DIR/tested-artifact.json" \
     "$target_sha" \

@@ -21,6 +21,7 @@ import {
   linuxPublicationVerificationPlan,
   withExactGitArchive,
   validateWindowsCratesIoReceipts,
+  validateWindowsRuntimeFipsVersion,
   validateWindowsPublicationFipsReceipts,
 } from './release-source-verification.mjs'
 import { readWorkspaceVersionTag } from './local-release-lib.mjs'
@@ -807,3 +808,35 @@ test('Windows publication requires installer and artifact receipts to bind exact
     )
   }
 })
+
+function runtimeFixture() {
+  const fixture = exactWindowsCratesIoFixture()
+  return { ...fixture, runtimeVersion: '4.1.19\nfips_core_version: 0.4.53\n',
+    cliSha256: fixture.artifactReceipt.payloads.cli.sha256,
+    cliSize: fixture.artifactReceipt.payloads.cli.size }
+}
+
+test('registry runtime without Git metadata requires complete independent provenance', () => {
+  const fixture = runtimeFixture()
+  assert.equal(validateWindowsRuntimeFipsVersion(fixture).revisionFromRegistry, true)
+  fixture.runtimeVersion = '4.1.19\nfips_core_version: 0.4.53 (rev cccccccccc)\n'
+  assert.equal(validateWindowsRuntimeFipsVersion(fixture).revisionFromRegistry, false)
+})
+
+for (const [label, mutate] of [
+  ['wrong version', f => { f.runtimeVersion = 'fips_core_version: 0.4.52' }],
+  ['wrong revision', f => { f.runtimeVersion = 'fips_core_version: 0.4.53 (rev aaaaaaaaaa)' }],
+  ['dirty revision', f => { f.runtimeVersion = 'fips_core_version: 0.4.53 (rev cccccccccc-dirty)' }],
+  ['duplicate runtime rows', f => { f.runtimeVersion += 'fips_core_version: 0.4.53\n' }],
+  ['missing source receipt', f => { f.sourceReceipt = {} }],
+  ['wrong artifact hash', f => { f.cliSha256 = '0'.repeat(64) }],
+  ['wrong artifact size', f => { f.cliSize++ }],
+  ['wrong package checksum', f => { f.sourceReceipt.fipsCrates['nvpn-fips-core'].cargoLockChecksum = '0'.repeat(64) }],
+  ['wrong package VCS', f => { f.sourceReceipt.fipsCrates['nvpn-fips-core'].packageVcsSha = '0'.repeat(40) }],
+  ['unaccepted installer', f => { f.artifactReceipt.installerInstalledAndLaunched = false }],
+]) {
+  test(`registry runtime rejects ${label}`, () => {
+    const fixture = runtimeFixture(); mutate(fixture)
+    assert.throws(() => validateWindowsRuntimeFipsVersion(fixture))
+  })
+}

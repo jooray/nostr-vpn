@@ -275,6 +275,23 @@ export function validateWindowsCratesIoReceipts({
   }
 }
 
+// Registry packages have no .git directory; an absent display revision is safe
+// only when the package VCS/checksum and installed artifact are independently bound.
+export function validateWindowsRuntimeFipsVersion(options) {
+  const proof = validateWindowsCratesIoReceipts(options)
+  if (options.cliSha256 !== proof.cliSha256 || options.cliSize !== proof.cliSize) {
+    throw new Error('Windows runtime CLI differs from the verified installer payload.')
+  }
+  const lines = options.runtimeVersion.replaceAll('\r', '').trim().split('\n')
+    .filter(line => line.startsWith('fips_core_version:'))
+  const plain = `fips_core_version: ${options.expectedFipsVersion}`
+  const revised = `${plain} (rev ${options.expectedFipsGitSha.slice(0, 10)})`
+  if (lines.length !== 1 || ![plain, revised].includes(lines[0])) {
+    throw new Error('Windows runtime FIPS version/revision differs from verified provenance.')
+  }
+  return { ...proof, runtimeFipsVersion: lines[0], revisionFromRegistry: lines[0] === plain }
+}
+
 function resolveWindowsCratesIoFipsPackages({
   exactCandidateRoot,
   expectedFipsGitSha,
@@ -960,7 +977,7 @@ if (
     expectedFipsVersion,
   ] = process.argv.slice(2)
   if (
-    provenanceCommand !== 'windows-cratesio-provenance'
+    !['windows-cratesio-provenance', 'windows-runtime-provenance'].includes(provenanceCommand)
     || !sourceReceiptPath
     || !artifactReceiptPath
     || !expectedAppGitSha
@@ -990,5 +1007,17 @@ if (
     expectedFipsGitTree,
     expectedFipsVersion,
   })
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+  let output = result
+  if (provenanceCommand === 'windows-runtime-provenance') {
+    const [versionPath, cliSha256, cliSize] = process.argv.slice(11)
+    output = validateWindowsRuntimeFipsVersion({
+      sourceReceipt: JSON.parse(readFileSync(sourceReceiptPath, 'utf8').replace(/^\uFEFF/, '')),
+      artifactReceipt: JSON.parse(readFileSync(artifactReceiptPath, 'utf8').replace(/^\uFEFF/, '')),
+      exactPackages: result.exactPackages,
+      expectedAppGitSha, expectedAppGitTree, expectedFipsGitSha,
+      expectedFipsGitTree, expectedFipsVersion,
+      runtimeVersion: readFileSync(versionPath, 'utf8'), cliSha256, cliSize: Number(cliSize),
+    })
+  }
+  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`)
 }

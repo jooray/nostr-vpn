@@ -33,7 +33,10 @@ param(
   [string]$AdminNpub = "",
   [string]$NetworkId = "",
   [string]$ParticipantNpub = "",
-  [string]$ParticipantAlias = "Release Pixel"
+  [string]$ParticipantAlias = "Release Pixel",
+  [Parameter(Mandatory = $true)][string]$VerifiedCliSha256,
+  [Parameter(Mandatory = $true)][long]$VerifiedCliSize,
+  [Parameter(Mandatory = $true)][string]$VerifiedFipsRuntimeVersion
 )
 
 $ErrorActionPreference = "Stop"
@@ -174,8 +177,20 @@ function Assert-SourceAndArtifacts {
   if ($LASTEXITCODE -ne 0) {
     throw "Windows candidate nvpn version command failed"
   }
-  if ($VerboseVersion -notmatch [regex]::Escape("(rev $($ExpectedFipsGitSha.Substring(0, 10)))")) {
-    throw "Windows nvpn binary does not contain the expected FIPS revision"
+  # The host validates registry checksums/package VCS and the installer receipt
+  # before providing this binding. Recheck the actual artifact on every action.
+  $VersionLines = @($VerboseVersion -split "`r?`n" | Where-Object { $_.StartsWith('fips_core_version:') })
+  $PlainVersion = "fips_core_version: $ExpectedFipsVersion"
+  $RevisedVersion = "$PlainVersion (rev $($ExpectedFipsGitSha.Substring(0, 10)))"
+  if (
+    $VerifiedCliSha256 -notmatch '^[0-9a-f]{64}$' -or
+    (Get-Sha256 $CliExe) -ne $VerifiedCliSha256 -or
+    (Get-Item -LiteralPath $CliExe).Length -ne $VerifiedCliSize -or
+    $VersionLines.Count -ne 1 -or
+    $VersionLines[0] -cne $VerifiedFipsRuntimeVersion -or
+    $VerifiedFipsRuntimeVersion -cnotin @($PlainVersion, $RevisedVersion)
+  ) {
+    throw "Windows runtime differs from host-verified artifact/registry provenance"
   }
   $AppVersion = $ShortVersion -replace '^nvpn\s+', ''
   if ($AppVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$') {
