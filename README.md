@@ -47,6 +47,13 @@ nvpn start --daemon --connect
 nvpn join-request
 ```
 
+On the admin device, open **Devices → Add Join Request**, scan or paste the
+request, check the device details, and confirm **Add device**. Approval is not
+automatic. The admin app signs and distributes the updated roster; this flow
+does not need a separate `add-device --publish` command. Keep the joining
+daemon running until it receives approval. The CLI can generate requests, but
+listing and approving signed join requests currently requires an admin app.
+
 The daemon lifecycle is:
 
 ```bash
