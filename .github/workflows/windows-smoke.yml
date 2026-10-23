@@ -6,7 +6,7 @@ on:
       ref:
         description: Exact shipping source commit
         required: true
-        default: be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
+        default: 4dfbc7f9b2f34168c932672b94877effa4034b33
 
 permissions:
   contents: read
@@ -19,8 +19,8 @@ env:
   CARGO_BUILD_JOBS: 2
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: never
-  EXPECTED_SOURCE: be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
-  EXPECTED_TREE: 3f741a01c030be6c4d0b96df3e0df7c71b54ed60
+  EXPECTED_SOURCE: 4dfbc7f9b2f34168c932672b94877effa4034b33
+  EXPECTED_TREE: 3c227a4c74ab357a10585214d929079d61b904cb
 
 jobs:
   prepare:
