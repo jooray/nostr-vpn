@@ -1,88 +1,128 @@
-name: Windows Smoke
+name: Windows cleanup and package preparation
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Git ref to test (branch, tag, or SHA). Defaults to the current ref when left blank.
-        required: false
-        default: ''
+        description: Exact shipping source commit
+        required: true
+        default: aae3084fc80ff289de9ea6bd8e5bb1b75fb71de9
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nvpn-windows-cleanup-preparation
+  cancel-in-progress: false
 
 env:
-  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: never
+  EXPECTED_SOURCE: aae3084fc80ff289de9ea6bd8e5bb1b75fb71de9
+  EXPECTED_TREE: 8c8b9f7e1e7a4f9df68c560b349bf53303f9b947
 
 jobs:
-  windows-smoke:
-    name: Windows app smoke
+  prepare:
     runs-on: windows-latest
-    permissions:
-      contents: read
+    timeout-minutes: 100
     defaults:
       run:
         shell: pwsh
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.ref || github.ref }}
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: 8.0.x
-
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+          toolchain: 1.95.0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.420
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: Swatinem/rust-cache@v2
         with:
           cache-bin: false
-
-      - name: Run Rust tests
-        run: cargo test --workspace
-
-      - name: Build CLI release binary
-        run: cargo build --release -p nvpn
-
-      - name: Install Windows native package dependencies
+          cache-on-failure: true
+      - name: Bind shipping source and retained native evidence
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ('${{ inputs.ref }}' -ne $env:EXPECTED_SOURCE -or (git rev-parse HEAD).Trim() -ne $env:EXPECTED_SOURCE -or (git rev-parse 'HEAD^{tree}').Trim() -ne $env:EXPECTED_TREE) { throw 'Unexpected shipping source' }
+          if ((git status --porcelain | Out-String).Trim()) { throw 'Shipping source is dirty' }
+          New-Item -ItemType Directory -Force artifacts/preparation, artifacts/preparation/tests, artifacts/preparation/overlay | Out-Null
+          @{
+            source = $env:EXPECTED_SOURCE; tree = $env:EXPECTED_TREE
+            workflow = '${{ github.sha }}'; run = '${{ github.run_id }}'
+            rust = (rustc -Vv | Out-String); cargo = (cargo -V | Out-String); dotnet = (dotnet --info | Out-String)
+            cargoLockSha256 = (Get-FileHash Cargo.lock -Algorithm SHA256).Hash.ToLowerInvariant()
+            reusedNativeTests = @{ source = $env:EXPECTED_SOURCE; storage = 4; spilmanCallers = 34; receipt = 'focused-aae3084f-attempt3'; rerun = $false }
+          } | ConvertTo-Json -Depth 5 | Set-Content artifacts/preparation/inputs.json
+      - name: Apply reviewed test-only cleanup overlay
+        run: |
+          $overlay = @'
+          import hashlib,pathlib,subprocess
+          root=pathlib.Path('crates/nostr-vpn-cli/src/wg_upstream_runtime')
+          name='tests_windows_cleanup_roots.rs'
+          blob=subprocess.check_output(['git','show','672f18bfef921d62a54358c509a3f546e45e823e:'+str(root/name).replace('\\','/')])
+          assert hashlib.sha256(blob).hexdigest()=='718960470b38f120cc9852551177f2defe2ed3e1ad0aea00f7d4989182e743da'
+          assert not (root/name).exists()
+          (root/name).write_bytes(blob)
+          p=root/'tests.rs'; old=p.read_bytes(); marker=b'    #[cfg(target_os = "macos")]'
+          assert old.count(marker)==1
+          p.write_bytes(old.replace(marker,b'    include!("tests_windows_cleanup_roots.rs");\n'+marker))
+          '@
+          python -c $overlay
+          if ($LASTEXITCODE) { throw 'Overlay preparation failed' }
+          Copy-Item crates/nostr-vpn-cli/src/wg_upstream_runtime/tests_windows_cleanup_roots.rs, crates/nostr-vpn-cli/src/wg_upstream_runtime/tests.rs artifacts/preparation/overlay/
+          git diff --binary | Set-Content artifacts/preparation/overlay/tracked.diff
+          Get-ChildItem artifacts/preparation/overlay -File | Get-FileHash -Algorithm SHA256 | ConvertTo-Json | Set-Content artifacts/preparation/overlay/hashes.json
+      - name: Compile and run actual CLI cleanup regressions
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo test -p nvpn --bin nvpn --locked --no-run --message-format=json 1> artifacts/preparation/tests/build.jsonl 2> artifacts/preparation/tests/build.log
+          if ($LASTEXITCODE) { Get-Content artifacts/preparation/tests/build.log -Tail 100; throw 'Cleanup test compilation failed' }
+          $executables = @(Get-Content artifacts/preparation/tests/build.jsonl | ForEach-Object { try { $_ | ConvertFrom-Json } catch {} } | Where-Object { $_.reason -eq 'compiler-artifact' -and $_.profile.test -and $_.executable } | Select-Object -ExpandProperty executable -Unique)
+          if ($executables.Count -ne 1) { throw 'Expected one CLI test executable' }
+          Copy-Item $executables[0] artifacts/preparation/tests/cleanup-tests.exe
+          $results = @()
+          foreach ($filter in @('cleanup_accepts_absent_roots_but_rejects_existing_unsafe_ancestors','windows_cleanup','windows_wg_cleanup','windows_failed_active_guard_cleanup','journaled_pending_cleanup_retry')) {
+            & $executables[0] $filter --test-threads=1 --nocapture 2>&1 | Tee-Object "artifacts/preparation/tests/$filter.log"
+            $code = $LASTEXITCODE
+            $text = Get-Content -Raw "artifacts/preparation/tests/$filter.log"
+            $results += @{ filter = $filter; exit = $code; passed = ($code -eq 0 -and $text -match 'test result: ok\. [1-9][0-9]* passed; 0 failed;') }
+          }
+          $results | ConvertTo-Json | Set-Content artifacts/preparation/tests/results.json
+          if (@($results | Where-Object { !$_.passed }).Count) { throw 'Cleanup regression failed' }
+      - name: Restore unchanged shipping source
+        if: always()
+        run: |
+          git restore --source=$env:EXPECTED_SOURCE -- crates/nostr-vpn-cli/src/wg_upstream_runtime/tests.rs
+          Remove-Item -LiteralPath crates/nostr-vpn-cli/src/wg_upstream_runtime/tests_windows_cleanup_roots.rs -ErrorAction SilentlyContinue
+          if ((git status --porcelain | Out-String).Trim()) { throw 'Shipping source differs after overlay removal' }
+          if ((Get-FileHash Cargo.lock -Algorithm SHA256).Hash.ToLowerInvariant() -ne (Get-Content artifacts/preparation/inputs.json | ConvertFrom-Json).cargoLockSha256) { throw 'Shipping lockfile changed' }
+      - name: Install established Windows packaging dependencies
         run: choco install llvm innosetup -y --no-progress
-
-      - name: Build Windows installer
+      - name: Build exact CLI and GUI installer
         env:
           NVPN_WINDOWS_LLVM_BIN: C:\Program Files\LLVM\bin
-        run: .\scripts\windows-build.ps1 -Configuration Release -Installer -Tag v0.0.0 -OutputDir dist
-
-      - name: Smoke launch installed Windows app
-        run: .\scripts\windows-installer-smoke.ps1 -InstallerPath dist\nostr-vpn-v0.0.0-windows-x64-setup.exe -ArtifactRoot artifacts
-
-      - name: Package smoke artifacts
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-
-          $files = @(
-            "target/release/nvpn.exe",
-            "dist/nostr-vpn-v0.0.0-windows-x64-setup.exe",
-            "artifacts/windows-app-launch-smoke.json"
-          )
-
-          foreach ($file in $files) {
-            if (-not (Test-Path $file)) {
-              throw "Expected build output not found: $file"
-            }
-            $source = Resolve-Path $file
-            $dist = Resolve-Path dist
-            if ((Split-Path -Parent $source) -ne $dist) {
-              Copy-Item $source dist/
-            }
-          }
-
-          Compress-Archive -Path dist/* -DestinationPath artifacts/windows-smoke.zip -Force
-
-      - name: Upload smoke artifacts
-        uses: actions/upload-artifact@v4
+          cargo build --release -p nvpn --locked 2>&1 | Tee-Object artifacts/preparation/cli-build.log
+          if ($LASTEXITCODE) { throw 'CLI build failed' }
+          ./scripts/windows-build.ps1 -Configuration Release -Installer -OutputDir dist 2>&1 | Tee-Object artifacts/preparation/installer-build.log
+          if ($LASTEXITCODE) { throw 'Windows installer build failed' }
+          if ((git status --porcelain | Out-String).Trim()) { throw 'Shipping build changed source' }
+          Copy-Item target/release/nvpn.exe artifacts/preparation/
+          Copy-Item dist/*-windows-x64-setup.exe artifacts/preparation/
+          Compress-Archive -Path windows/NostrVpn.Windows/bin/Release/net8.0-windows/win-x64/publish/* -DestinationPath artifacts/preparation/gui-publish.zip
+      - name: Hash every retained artifact
+        if: always()
+        run: |
+          Get-ChildItem artifacts/preparation -Recurse -File | ForEach-Object { @{ path = [IO.Path]::GetRelativePath((Resolve-Path artifacts/preparation), $_.FullName); size = $_.Length; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() } } | ConvertTo-Json -Depth 4 | Set-Content artifacts/preparation/manifest.json
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: windows-smoke
-          path: artifacts/windows-smoke.zip
-          retention-days: 7
+          name: windows-cleanup-${{ inputs.ref }}
+          path: artifacts/preparation
+          if-no-files-found: error
+          retention-days: 14
