@@ -1,46 +1,74 @@
-name: Native Linux candidate
-
+name: Final 4.1.19 native Linux preparation
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/nvpn-publish-final-104]
-    paths:
-      - .github/workflows/native-linux-candidate.yml
-      - scripts/build-hosted-linux-candidate.sh
-
 permissions:
   contents: read
-
 concurrency:
-  group: native-linux-candidate-${{ github.ref }}
+  group: nvpn-4119-final-native-linux
   cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
           fetch-depth: 0
       - uses: actions/checkout@v6
         with:
           repository: mmalmi/fips
-          ref: 12a7b154fa2fe8e86483c51ac10708501e50cdfe
+          ref: f98d97e42dfa48d5fed344c43caa9ebd27b01229
           fetch-depth: 0
           path: .hosted-fips
-      - name: Reclaim unused hosted-runner toolchains
+      - name: Verify exact final sources and prepare existing native driver
         shell: bash
         run: |
-          # This fresh, dedicated Linux build job uses none of these SDKs.
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
+          test "$(git rev-parse 'HEAD^{tree}')" = 3f741a01c030be6c4d0b96df3e0df7c71b54ed60
+          test -z "$(git diff --name-only HEAD)"
+          test "$(git -C .hosted-fips rev-parse HEAD)" = f98d97e42dfa48d5fed344c43caa9ebd27b01229
+          test "$(git -C .hosted-fips rev-parse 'HEAD^{tree}')" = dcb1c6d80de1e28a0f442e30cba8ddadb15dc581
+          test -z "$(git -C .hosted-fips status --porcelain)"
+          python3 - <<'DRIVER'
+          import os,pathlib,hashlib,json
+          root=pathlib.Path(os.environ['GITHUB_WORKSPACE'])
+          original=(root/'scripts/build-hosted-linux-candidate.sh').read_text()
+          source=original
+          old='ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"'
+          assert source.count(old)==1
+          source=source.replace(old,'ROOT="$GITHUB_WORKSPACE"')
+          old='[[ "$fips_sha" == 12a7b154fa2fe8e86483c51ac10708501e50cdfe ]]'
+          assert source.count(old)==1
+          source=source.replace(old,'[[ "$fips_sha" == f98d97e42dfa48d5fed344c43caa9ebd27b01229 ]]')
+          path=pathlib.Path(os.environ['RUNNER_TEMP'])/'final-native-driver.sh'
+          path.write_text(source)
+          proof={'shippingSourceChanged':False,'appGitSha':'be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9','appGitTree':'3f741a01c030be6c4d0b96df3e0df7c71b54ed60','fipsGitSha':'f98d97e42dfa48d5fed344c43caa9ebd27b01229','fipsGitTree':'dcb1c6d80de1e28a0f442e30cba8ddadb15dc581','originalDriverSha256':hashlib.sha256(original.encode()).hexdigest(),'executionDriverSha256':hashlib.sha256(source.encode()).hexdigest(),'changes':['external driver root','exact published FIPS 0.4.107 pin']}
+          (path.parent/'final-native-driver.json').write_text(json.dumps(proof,indent=2)+'\n')
+          DRIVER
+          bash -n "$RUNNER_TEMP/final-native-driver.sh"
+      - name: Reclaim unused SDKs on this dedicated runner
+        shell: bash
+        run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
           df -h /
-      - name: Build exact sources with the canonical native driver
-        run: scripts/build-hosted-linux-candidate.sh "$GITHUB_WORKSPACE/.hosted-fips" "$RUNNER_TEMP/nvpn-linux-candidate"
+      - name: Build exact final Linux packages and native GTK check
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$RUNNER_TEMP/final-native-driver.sh" "$GITHUB_WORKSPACE/.hosted-fips" "$RUNNER_TEMP/nvpn-linux-candidate" 2>&1 | tee "$RUNNER_TEMP/final-native-build.log"
+          test "$(git rev-parse HEAD)" = be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
+          test -z "$(git diff --name-only HEAD)"
       - uses: actions/upload-artifact@v6
+        if: always()
         with:
-          name: native-linux-candidate-${{ github.sha }}
-          path: ${{ runner.temp }}/nvpn-linux-candidate
+          name: final-native-linux-be6a279c23e2c0925cf5d4491c4d02a69bb9cbb9
+          path: |
+            ${{ runner.temp }}/nvpn-linux-candidate
+            ${{ runner.temp }}/final-native-build.log
+            ${{ runner.temp }}/final-native-driver.json
+            ${{ runner.temp }}/final-native-driver.sh
           compression-level: 0
-          retention-days: 7
+          retention-days: 14
           if-no-files-found: error
