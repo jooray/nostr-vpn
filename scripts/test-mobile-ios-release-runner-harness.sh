@@ -339,6 +339,61 @@ grep -Fq 'requires exact artifact reuse' "$TEMP_ROOT/reuse-required.log" \
   || fail "disabled iOS install mode did not fail closed"
 unset NVPN_MOBILE_WG_EXIT_INSTALL_IOS NVPN_MOBILE_WG_EXIT_REUSE_IOS_BUILD
 
+metadata_fixture="$TEMP_ROOT/reuse-metadata"
+mkdir -p "$metadata_fixture/derived/Build/Products/Release-iphoneos/NostrVpnIosUITests-Runner.app" \
+  "$metadata_fixture/fips"
+printf '{}\n' >"$metadata_fixture/plan.xctestrun"
+printf '{"fips":"sealed"}\n' >"$metadata_fixture/linkage.json"
+python3 - "$metadata_fixture" <<'PY'
+import hashlib, json, pathlib, sys
+
+root = pathlib.Path(sys.argv[1])
+metadata = root / "linkage.json"
+receipt = {
+    "fipsCargoMetadataReceiptSha256": hashlib.sha256(metadata.read_bytes()).hexdigest(),
+    "fipsCargoMetadataReceiptPathSha256": hashlib.sha256(str(metadata.resolve()).encode()).hexdigest(),
+    "fipsCheckoutPathSha256": hashlib.sha256(str((root / "fips").resolve()).encode()).hexdigest(),
+}
+(root / "valid.json").write_text(json.dumps(receipt))
+receipt["fipsCargoMetadataReceiptSha256"] = "0" * 64
+(root / "changed.json").write_text(json.dumps(receipt))
+(root / "relocated.json").write_bytes(metadata.read_bytes())
+PY
+run_reuse_metadata_preflight() (
+  NVPN_MOBILE_IOS_RELEASE_APP_PATH="$reuse_app"
+  NVPN_MOBILE_IOS_RELEASE_DERIVED_DATA="$metadata_fixture/derived"
+  NVPN_MOBILE_IOS_RELEASE_XCTESTRUN="$metadata_fixture/plan.xctestrun"
+  NVPN_MOBILE_IOS_REUSE_RECEIPT="$1"
+  NVPN_MOBILE_IOS_RELEASE_RUNNER_RECEIPT="$reuse_runner_receipt"
+  NVPN_MOBILE_IOS_RELEASE_RUNNER_TREE_SHA256="$reuse_runner_tree"
+  NVPN_EXPECTED_APP_GIT_SHA="$(printf '%040d' 1)"
+  NVPN_EXPECTED_FIPS_GIT_SHA="$(printf '%040d' 2)"
+  NVPN_IOS_FIPS_METADATA_RECEIPT="$2"
+  NVPN_FIPS_REPO_PATH="$metadata_fixture/fips"
+  ios_release_network_reused_app_sha() { return 86; }
+  ios_release_network_resolve_device() { fail "metadata preflight contacted a phone"; }
+  ios_release_network_prepare_reuse fixture-device
+)
+metadata_status=0
+run_reuse_metadata_preflight "$metadata_fixture/valid.json" \
+  "$metadata_fixture/linkage.json" >"$metadata_fixture/valid.log" 2>&1 \
+  || metadata_status=$?
+[[ "$metadata_status" -eq 86 ]] || fail "valid sealed metadata did not reach source validation"
+for metadata_case in missing changed relocated; do
+  metadata_receipt="$metadata_fixture/valid.json"
+  metadata_path="$metadata_fixture/linkage.json"
+  case "$metadata_case" in
+    missing) metadata_path="$metadata_fixture/missing.json" ;;
+    changed) metadata_receipt="$metadata_fixture/changed.json" ;;
+    relocated) metadata_path="$metadata_fixture/relocated.json" ;;
+  esac
+  metadata_status=0
+  run_reuse_metadata_preflight "$metadata_receipt" "$metadata_path" \
+    >"$metadata_fixture/$metadata_case.log" 2>&1 || metadata_status=$?
+  [[ "$metadata_status" -eq 1 ]] \
+    || fail "$metadata_case FIPS metadata reached source/device preparation"
+done
+
 for stem in nvpn-installed-release nvpn-release-installed NostrVpnIos-case.xctestrun; do
   first="$(mktemp "$TEMP_ROOT/$stem.XXXXXX")"
   second="$(mktemp "$TEMP_ROOT/$stem.XXXXXX")"

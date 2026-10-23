@@ -363,6 +363,7 @@ ios_release_network_prepare_reuse() {
   local device="$1" app derived xctestrun receipt runner_receipt runner
   local app_tree runner_tree xctestrun_sha test_products_tree
   local device_udid device_sha values install_mode runner_install_receipt artifact_app_sha
+  local metadata_receipt
   app="${NVPN_MOBILE_IOS_RELEASE_APP_PATH:-}"
   derived="${NVPN_MOBILE_IOS_RELEASE_DERIVED_DATA:-}"
   xctestrun="${NVPN_MOBILE_IOS_RELEASE_XCTESTRUN:-}"
@@ -377,6 +378,32 @@ ios_release_network_prepare_reuse() {
     echo "Exact iOS reuse requires pinned app, runner, xctestrun, and receipts" >&2
     return 1
   }
+  # The post-case audit needs this same sealed build receipt. Reject missing or
+  # mismatched inputs before device queries and expensive physical tests.
+  metadata_receipt="${NVPN_IOS_FIPS_METADATA_RECEIPT:-$ROOT/artifacts/mobile-ios/fips-linkage.json}"
+  if ! python3 - "$receipt" "$metadata_receipt" "${NVPN_FIPS_REPO_PATH:-}" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+try:
+    receipt = json.loads(Path(sys.argv[1]).read_text())
+    metadata = Path(sys.argv[2])
+    expected = {
+        "fipsCargoMetadataReceiptSha256": hashlib.sha256(metadata.read_bytes()).hexdigest(),
+        "fipsCargoMetadataReceiptPathSha256": hashlib.sha256(str(metadata.resolve()).encode()).hexdigest(),
+        "fipsCheckoutPathSha256": hashlib.sha256(str(Path(sys.argv[3]).resolve()).encode()).hexdigest(),
+    }
+    valid = bool(sys.argv[3]) and all(receipt.get(key) == value for key, value in expected.items())
+except (OSError, ValueError, AttributeError):
+    valid = False
+sys.exit(0 if valid else 1)
+PY
+  then
+    echo "Exact iOS reuse requires matching FIPS metadata; check NVPN_IOS_FIPS_METADATA_RECEIPT" >&2
+    return 1
+  fi
   # Keep the signed app's original identity after a harness-only correction.
   # Prove unchanged product inputs before even resolving the physical device.
   artifact_app_sha="$(ios_release_network_reused_app_sha "$receipt")" || return
