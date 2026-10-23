@@ -1,13 +1,20 @@
 name: Final 4.1.19 native Linux preparation
 on:
   workflow_dispatch:
+    inputs:
+      lane:
+        description: Native x64 packages or native-smoked ARM64 CLI
+        type: choice
+        default: x64
+        options: [x64, arm64]
 permissions:
   contents: read
 concurrency:
-  group: nvpn-4119-final-native-linux
+  group: nvpn-4119-final-native-linux-${{ inputs.lane }}
   cancel-in-progress: false
 jobs:
   build:
+    if: inputs.lane != 'arm64'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -69,6 +76,74 @@ jobs:
             ${{ runner.temp }}/final-native-build.log
             ${{ runner.temp }}/final-native-driver.json
             ${{ runner.temp }}/final-native-driver.sh
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+  arm64:
+    if: inputs.lane == 'arm64'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 4dfbc7f9b2f34168c932672b94877effa4034b33
+          fetch-depth: 0
+          path: app
+      - uses: actions/checkout@v6
+        with:
+          repository: mmalmi/fips
+          ref: f98d97e42dfa48d5fed344c43caa9ebd27b01229
+          fetch-depth: 0
+          path: fips
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64
+      - name: Prepare canonical ARM64 build and native smoke
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(git rev-parse HEAD)" = 4dfbc7f9b2f34168c932672b94877effa4034b33
+          test "$(git rev-parse 'HEAD^{tree}')" = 3c227a4c74ab357a10585214d929079d61b904cb
+          test -z "$(git status --porcelain --untracked-files=all)"
+          docker info --format '{{.OSType}}/{{.Architecture}}'
+          docker pull --platform linux/arm64 ubuntu:24.04
+          echo "NVPN_REAL_DOCKER=$(command -v docker)" >> "$GITHUB_ENV"
+          python3 - <<'WRAPPER'
+          import base64,os,pathlib
+          directory=pathlib.Path(os.environ['RUNNER_TEMP'])/'nvpn-bounded-bin'
+          directory.mkdir()
+          path=directory/'docker'
+          path.write_bytes(base64.b64decode('IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJMaW1pdCBvbmx5IHRoaXMgcmVsZWFzZSBpbnZvY2F0aW9uJ3MgY29udGFpbmVyczsgcmV0YWluIGNhbm9uaWNhbCBidWlsZC9jYWNoZSBwYXRocy4iIiIKaW1wb3J0IG9zCmltcG9ydCBzeXMKCmFyZ3MgPSBzeXMuYXJndlsxOl0KaW5kZXggPSAwCndoaWxlIGluZGV4IDwgbGVuKGFyZ3MpIGFuZCBhcmdzW2luZGV4XS5zdGFydHN3aXRoKCItIik6CiAgICBvcHRpb24gPSBhcmdzW2luZGV4XQogICAgaWYgb3B0aW9uIGluICgiLS1jb25maWciLCAiLS1jb250ZXh0IiwgIi0taG9zdCIsICItSCIpOgogICAgICAgIGluZGV4ICs9IDIKICAgIGVsaWYgb3B0aW9uLnN0YXJ0c3dpdGgoKCItLWNvbmZpZz0iLCAiLS1jb250ZXh0PSIsICItLWhvc3Q9IikpOgogICAgICAgIGluZGV4ICs9IDEKICAgIGVsc2U6CiAgICAgICAgYnJlYWsKaWYgaW5kZXggPCBsZW4oYXJncykgYW5kIGFyZ3NbaW5kZXhdID09ICJydW4iOgogICAgb3duZXIgPSBvcy5lbnZpcm9uLmdldCgiTlZQTl9BUk02NF9CVUlMRF9PV05FUiIsICIiKQogICAgaWYgbm90IG93bmVyIG9yIGFueShjIG5vdCBpbiAiYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU2Nzg5LSIgZm9yIGMgaW4gb3duZXIpOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoIkV4YWN0IEFSTTY0IGJ1aWxkIG93bmVyIGxhYmVsIGlzIHJlcXVpcmVkIikKICAgIGFyZ3NbaW5kZXggKyAxOmluZGV4ICsgMV0gPSBbCiAgICAgICAgIi0tY3B1cz0yIiwgIi0tbWVtb3J5PThnIiwgIi0tbWVtb3J5LXN3YXA9OGciLAogICAgICAgICItLWVudj1DQVJHT19CVUlMRF9KT0JTPTIiLCAiLS1sYWJlbD1udnBuLnJlbGVhc2Uub3duZXI9IiArIG93bmVyLAogICAgXQpyZWFsID0gb3MuZW52aXJvblsiTlZQTl9SRUFMX0RPQ0tFUiJdCm9zLmV4ZWN2KHJlYWwsIFtyZWFsLCAqYXJnc10pCg=='))
+          path.chmod(0o755)
+          with open(os.environ['GITHUB_PATH'],'a') as stream:stream.write(str(directory)+'\n')
+          WRAPPER
+      - name: Build canonical ARM64 CLI and run native smoke
+        working-directory: app
+        shell: bash
+        env:
+          NVPN_FIPS_REPO_PATH: ${{ github.workspace }}/fips
+          NVPN_EXPECTED_APP_GIT_SHA: 4dfbc7f9b2f34168c932672b94877effa4034b33
+          NVPN_EXPECTED_APP_GIT_TREE: 3c227a4c74ab357a10585214d929079d61b904cb
+          NVPN_EXPECTED_FIPS_GIT_SHA: f98d97e42dfa48d5fed344c43caa9ebd27b01229
+          NVPN_EXPECTED_FIPS_GIT_TREE: dcb1c6d80de1e28a0f442e30cba8ddadb15dc581
+          NVPN_EXPECTED_FIPS_VERSION: 0.4.107
+          NVPN_ARM64_BUILD_OWNER: nvpn-4119-final-arm64
+          NVPN_LINUX_MUSL_IMAGE: messense/rust-musl-cross:aarch64-musl
+          NVPN_LINUX_ARM64_SMOKE_IMAGE: ubuntu:24.04
+        run: |
+          set -euo pipefail
+          scripts/build-linux-arm64-cli-gate.sh "$RUNNER_TEMP/nvpn-arm64-final" 2>&1 | tee "$RUNNER_TEMP/nvpn-arm64-controller.log"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: final-arm64-cli-4dfbc7f9
+          path: |
+            ${{ runner.temp }}/nvpn-arm64-final
+            ${{ runner.temp }}/nvpn-arm64-controller.log
+            ${{ runner.temp }}/nvpn-bounded-bin/docker
           compression-level: 0
           retention-days: 14
           if-no-files-found: error
