@@ -55,7 +55,15 @@ nvpn status
 nvpn stop
 ```
 
-For startup at boot, run `sudo nvpn service install`; on Windows, run `nvpn service install` from an elevated shell. Check it with `nvpn service status`.
+For startup at boot on Linux or macOS, pass the absolute path of the
+configuration you initialized to `sudo nvpn service install --config <path>`.
+Stop a separately started daemon with `nvpn stop` before installing the service.
+Use the same `--config <path>` with `nvpn status`, `nvpn set`, and
+`nvpn service status`; run these with `sudo` if the service owns the configuration
+or state files. Without an explicit path, an elevated command can select a
+different user's configuration and create a separate identity and network.
+On Windows, run `nvpn service install` from an elevated shell and check it with
+`nvpn service status`.
 
 Linux update checks select packages for your distribution and architecture. Automatic downloads stay in the background and are remembered across app restarts. Choose **Show download** to open the folder and install the package; the app never opens an installer or browser automatically.
 
@@ -82,6 +90,7 @@ Use `just run-macos` or `just run-linux` for a specific desktop target. See [ver
 - [Protocol](docs/protocol.md): enrollment, roster sync, routing, and DNS privacy
 - [StartOS packaging](CONTRIBUTING.md): contributor build and validation notes
 - [Changelog](CHANGELOG.md): release history
+- [Security reports](SECURITY.md): private vulnerability reporting
 - [Experiments](docs/EXPERIMENTS.md): performance and reliability results
 - [Native UI parity](docs/native-ui-parity-matrix.md): platform implementation status
 
