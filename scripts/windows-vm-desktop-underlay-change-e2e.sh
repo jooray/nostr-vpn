@@ -206,6 +206,13 @@ JS
     "$ARTIFACT_DIR/windows-probe-logging-harness.log" \
     || fail "Windows concurrent probe logging regression failed"
 
+  run_ps_primary \
+    "& $(ps_quote "$GUEST_REPO\\scripts\\test-desktop-windows-runtime-version.ps1")" \
+    >"$ARTIFACT_DIR/windows-runtime-provenance-harness.log"
+  grep -Fq 'WINDOWS_RUNTIME_PROVENANCE_PREDICATE_OK cases=8' \
+    "$ARTIFACT_DIR/windows-runtime-provenance-harness.log" \
+    || fail "Windows runtime provenance predicate regression failed"
+
   run_ps_primary "\$ErrorActionPreference = 'Stop'
 \$Bin = $(ps_quote "$GUEST_BINARY")
 \$ReceiptPath = $(ps_quote "$GUEST_INSTALLER_RECEIPT")
@@ -489,6 +496,7 @@ start_windows_runner() {
 -ProbeUrl $(ps_quote "$PROBE_URL") \
 -ExpectedFipsVersion $(ps_quote "$EXPECTED_FIPS_VERSION") \
 -ExpectedFipsRevision $(ps_quote "$EXPECTED_FIPS_REV") \
+-VerifiedFipsRuntimeVersion $(ps_quote "$(jq -er '.runtimeFipsVersion | sub("^fips_core_version: "; "")' "$ARTIFACT_DIR/runtime-provenance-validation.json")") \
 -ListenPort $TARGET_LISTEN_PORT \
 -RecoveryDeadlineMilliseconds $RECOVERY_DEADLINE_MS"
   (
