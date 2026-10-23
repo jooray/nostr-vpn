@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Keep macOS peers on connected LANs and VM bridges reachable instead of
+  routing them through the default Internet gateway.
 - Recover retained Nostr relay updates after incoming bursts fill the queue,
   and avoid queueing duplicate updates from the same relay.
 - Retry exhausted mobile peer connections on bounded discovery probes while

@@ -594,7 +594,6 @@ impl FipsPrivateTunnelRuntime {
         let interfaces = netdev::get_interfaces();
         let routes = crate::macos_network::macos_endpoint_bypass_targets_for_hosts(
             &hosts,
-            self.endpoint_bypass_underlay.as_ref(),
             &interfaces,
         );
         let force_underlay_refresh = self.macos_underlay_refresh_pending
@@ -647,7 +646,6 @@ impl FipsPrivateTunnelRuntime {
         };
         let routes = crate::macos_network::macos_endpoint_bypass_targets_for_hosts(
             &hosts,
-            underlay.as_ref(),
             &interfaces,
         );
         self.reconcile_macos_endpoint_bypass_routes(
