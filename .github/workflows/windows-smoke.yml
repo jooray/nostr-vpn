@@ -78,6 +78,8 @@ jobs:
           git diff --binary | Set-Content artifacts/preparation/overlay/tracked.diff
           Get-ChildItem artifacts/preparation/overlay -File | Get-FileHash -Algorithm SHA256 | ConvertTo-Json | Set-Content artifacts/preparation/overlay/hashes.json
       - name: Compile and run actual CLI cleanup regressions
+        id: cleanup
+        continue-on-error: true
         run: |
           $ErrorActionPreference = 'Stop'
           cargo test -p nvpn --bin nvpn --locked --no-run --message-format=json 1> artifacts/preparation/tests/build.jsonl 2> artifacts/preparation/tests/build.log
@@ -95,6 +97,7 @@ jobs:
           $results | ConvertTo-Json | Set-Content artifacts/preparation/tests/results.json
           if (@($results | Where-Object { !$_.passed }).Count) { throw 'Cleanup regression failed' }
       - name: Restore unchanged shipping source
+        id: shipping
         if: always()
         run: |
           git restore --source=$env:EXPECTED_SOURCE -- crates/nostr-vpn-cli/src/wg_upstream_runtime/tests.rs
@@ -126,3 +129,6 @@ jobs:
           path: artifacts/preparation
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve failed cleanup gate after artifact preparation
+        if: always() && steps.cleanup.outcome == 'failure'
+        run: throw 'Cleanup gate failed; prepared artifacts are not accepted for release'
